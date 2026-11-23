@@ -9,6 +9,7 @@ import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/
 // @ts-ignore - clone preservando esqueleto (itens com SkinnedMesh, ex.: armaduras)
 import { clone as skeletonClone } from 'skinview3d/node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 import { attachLegsToBones } from '../lib/legAttachment';
+import { attachHeadAddonsToPlayer } from '../lib/avatarHeadAddons';
 // @ts-ignore
 import { PlayerObject } from 'skinview3d';
 // @ts-ignore
@@ -558,8 +559,10 @@ function makeNativeAnimation(name: string): PlayerAnimation {
 }
 
 // Anexa os itens equipados ao boneco nativo (skinview3d) — mesma lógica do AvatarCharacter.
-function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loader: any) {
-  if (!player || !items?.length) return;
+export function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loader: any) {
+  if (!player) return;
+  attachHeadAddonsToPlayer(player, config, items || []);
+  if (!items?.length) return;
   console.log('[ARENA-ITEM] total de itens recebidos:', items.length, items.map((i: any) => `${i.avatarPart}:${i.itemTitle}`));
   const isLeftHanded = config?.handedness === 'left';
   const inv = isLeftHanded ? -1 : 1;
@@ -582,23 +585,10 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
         });
       }
     } catch { /* noop */ }
-    try {
-      const sparkLvl = item.forgeLevel || 0;
-      const sparkTier = sparkLvl >= 9 ? 3 : sparkLvl >= 8 ? 2 : sparkLvl >= 7 ? 1 : 0;
-      if (sparkTier > 0) {
-        const isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
-        const isShield = isWeaponSlot && item.itemCategory === 'defense';
-        const sparkScale = (isWeaponSlot && !isShield) ? 0.98 : (isShield ? 1.22 : 1.3);
-        const sparkMul = (isWeaponSlot && !isShield) ? 1 : (isShield ? 1.5 : 2);
-        // No boneco nativo o player é escalado para 1.9 (fitEntityToGround) — as sparkles
-        // compensam pelo worldScale e ficariam gigantes (~63% do personagem). Ajusta o
-        // tamanho proporcionalmente à escala do boneco (AvatarCharacter não escala, ~30u).
-        const nativeScale = player?.scale?.x || 1;
-        attachForgeSparkles(model, sparkTier, sparkScale, sparkMul, nativeScale);
-      }
-    } catch { /* noop */ }
-
-    const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
+    const sparkTargets: THREE.Object3D[] = [];
+    const transform = resolveModelTransform(item, config?.gender, config?.handedness, false)
+      || item.modelTransforms?.common
+      || (item.modelTransforms && (Object.values(item.modelTransforms)[0] as any));
     const p = String(item.avatarPart);
     if (['rightHand', 'leftHand', 'hand', 'two_handed', 'pickaxe'].includes(p)) {
       const isDefense = item.itemCategory === 'defense';
@@ -621,29 +611,54 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
         model.rotation.set(Math.PI / 2, 0, 0);
       }
       targetArm.add(model);
+      sparkTargets.push(model);
     } else if (p === 'head' || p === 'face') {
       const s = item.minecraftHeadValue ? 9.2 : 16;
       model.scale.set(transform?.scale ?? s, transform?.scale ?? s, (transform?.scale ?? s) * (transform?.thickness ?? 1));
       if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
       else { model.position.set(0, 0, 0); model.rotation.set(0, Math.PI, 0); }
       player.skin.head.add(model);
+      sparkTargets.push(model);
     } else if (p === 'legs' || p === 'feet') {
-      if (!attachLegsToBones(model, player, transform)) {
+      const prevL = player.skin.leftLeg?.children?.length || 0;
+      const prevR = player.skin.rightLeg?.children?.length || 0;
+      if (!attachLegsToBones(model, player, transform, p === 'feet' ? -22 : -15)) {
         model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
         if (transform) { model.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide ?? 0); }
         else model.position.set(0, p === 'feet' ? -22 : -15, 0);
         player.skin.body.add(model);
+        sparkTargets.push(model);
+      } else {
+        const lAdded = player.skin.leftLeg?.children?.[prevL]?.children?.[0];
+        const rAdded = player.skin.rightLeg?.children?.[prevR]?.children?.[0];
+        if (lAdded) sparkTargets.push(lAdded);
+        if (rAdded) sparkTargets.push(rAdded);
       }
     } else {
       model.scale.set(transform?.scale ?? 16, transform?.scale ?? 16, (transform?.scale ?? 16) * (transform?.thickness ?? 1));
       if (transform) { model.position.set(transform.posX, transform.posY, transform.posZ); model.rotation.set(transform.rotX, transform.rotY, transform.rotZ); model.translateY(transform.slide); }
       else model.position.set(0, -6, 0);
       player.skin.body.add(model);
+      sparkTargets.push(model);
     }
+    try {
+      const sparkLvl = item.forgeLevel || 0;
+      const sparkTier = sparkLvl >= 9 ? 3 : sparkLvl >= 8 ? 2 : sparkLvl >= 7 ? 1 : 0;
+      if (sparkTier > 0 && sparkTargets.length > 0) {
+        const isWeaponSlot = ['hand', 'two_handed', 'pickaxe', 'rightHand', 'leftHand'].includes(String(item.avatarPart));
+        const isShield = isWeaponSlot && item.itemCategory === 'defense';
+        const sparkScale = (isWeaponSlot && !isShield) ? 0.98 : (isShield ? 1.22 : 1.3);
+        const baseMul = (isWeaponSlot && !isShield) ? 1 : (isShield ? 1.5 : 2);
+        const sparkMul = sparkTargets.length > 1 ? Math.max(0.75, baseMul / sparkTargets.length) : baseMul;
+        const nativeScale = player?.scale?.x || 1;
+        sparkTargets.forEach((tgt) => attachForgeSparkles(tgt, sparkTier, sparkScale, sparkMul, nativeScale));
+      }
+    } catch { /* noop */ }
   };
 
   for (const item of items) {
     if (!item?.gameModelUrl) continue;
+    if (config?.hiddenSlots?.includes(String(item.avatarPart))) continue;
     const raw = item.gameModelUrl;
     // Resolve a URL como no AvatarCharacter: prefixa /models/ quando relativo, adiciona
     // BASE_URL e codifica espaços (ex.: "cintura diamante.glb"). Sem isso o loader busca
@@ -660,7 +675,9 @@ function attachEquippedItemsToPlayer(player: any, config: any, items: any[], loa
     try {
       console.log('[ARENA-ITEM] carregando:', item.avatarPart, item.itemTitle, finalUrl);
       if (IMG_EXT_RE.test(finalUrl.split('?')[0])) {
-        const transform = resolveModelTransform(item, config?.gender, config?.handedness, false) || item.modelTransforms?.common;
+        const transform = resolveModelTransform(item, config?.gender, config?.handedness, false)
+      || item.modelTransforms?.common
+      || (item.modelTransforms && (Object.values(item.modelTransforms)[0] as any));
         generateVoxelItemFromImage(finalUrl, item.backColor, transform?.curveX || 0, transform?.curveY || 0, undefined, 0.12 * (transform?.thickness ?? 1))
           .then((m: any) => attach(m, item))
           .catch((e: any) => console.warn('[ARENA-ITEM] falha voxel:', item.itemTitle, e));

@@ -16,64 +16,104 @@ function classifySide(node: any): 'left' | 'right' | 'none' {
   return 'none';
 }
 
-/**
- * Divide um modelo de CALÇA/BOTA (malha única, sem nomes de lado) em metades ESQUERDA/DIREITA.
- * Escolhe o eixo de corte em que as metades ficam MAIS LARGAS (perna é mais larga que a espessura
- * de uma placa frente/trás) — assim separa esquerda/direita e nunca frente/trás.
- */
-function splitLegsByAxis(src: THREE.Object3D): { left: THREE.Object3D; right: THREE.Object3D } {
-  // @ts-ignore
-  const v = new THREE.Vector3();
-  const tris: { x: number; z: number }[] = [];
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  src.traverse((node: any) => {
-    if (!node.isMesh || !node.geometry) return;
-    const pos = node.geometry.attributes.position;
-    if (!pos) return;
-    const n = Math.floor(pos.count / 3);
-    for (let t = 0; t < n; t++) {
-      let x = 0, z = 0;
-      for (let k = 0; k < 3; k++) { const i = t * 3 + k; x += pos.getX(i); z += pos.getZ(i); }
-      x /= 3; z /= 3;
-      tris.push({ x, z });
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+/** Clona um Object3D ignorando referências circulares em `userData` (ex.: `forgeModel` de partículas). */
+function safeClone(src: THREE.Object3D): THREE.Object3D {
+  const saved: { node: any; data: any }[] = [];
+  src.traverse((n: any) => {
+    if (n.userData && Object.keys(n.userData).length > 0) {
+      const clean: Record<string, any> = {};
+      let hadNonPlain = false;
+      for (const [k, v] of Object.entries(n.userData)) {
+        if (k === 'forgeModel' || (v && typeof v === 'object' && (v as any).isObject3D)) {
+          hadNonPlain = true;
+        } else {
+          clean[k] = v;
+        }
+      }
+      if (hadNonPlain) {
+        saved.push({ node: n, data: n.userData });
+        n.userData = clean;
+      }
     }
   });
-  const evalAxis = (useX: boolean) => {
-    const center = useX ? (minX + maxX) / 2 : (minZ + maxZ) / 2;
-    let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
-    for (const t of tris) { const a = useX ? t.x : t.z; if (a < center) { if (a < aMin) aMin = a; if (a > aMax) aMax = a; } else { if (a < bMin) bMin = a; if (a > bMax) bMax = a; } }
-    return { center, score: Math.max((aMax - aMin) || 0, (bMax - bMin) || 0) };
-  };
-  const ex = evalAxis(true), ez = evalAxis(false);
-  const useX = ex.score >= ez.score;
-  const center = useX ? ex.center : ez.center;
+  try {
+    const cloned = src.clone(true);
+    // Remove eventuais grupos de partículas da forja clonados para evitar sprites congelados em escala 1:1
+    const toRemove: THREE.Object3D[] = [];
+    cloned.traverse((n: any) => {
+      if (n.isSprite || n.userData?.forgeSparkSize !== undefined) toRemove.push(n);
+    });
+    toRemove.forEach((n) => n.parent?.remove(n));
+    return cloned;
+  } finally {
+    for (const s of saved) s.node.userData = s.data;
+  }
+}
+
+/**
+ * Divide um modelo de CALÇA/BOTA (ou malhas sem lado) em metades ESQUERDA/DIREITA.
+ * Projeta os triângulos para o espaço do corpo (aplicando matrizes locais e rotação do
+ * modelTransform) e separa em relação ao eixo X do personagem (`+X` = esquerda, `-X` = direita).
+ */
+function splitLegsByAxis(
+  src: THREE.Object3D,
+  transform: any,
+  shouldSplitNode?: (node: any) => boolean
+): { left: THREE.Object3D; right: THREE.Object3D } {
+  src.position.set(0, 0, 0);
+  src.rotation.set(0, 0, 0);
+  src.scale.set(1, 1, 1);
+  src.updateMatrixWorld(true);
+
+  const rotEuler = new THREE.Euler(transform?.rotX || 0, transform?.rotY || 0, transform?.rotZ || 0);
+  const rotMat = new THREE.Matrix4().makeRotationFromEuler(rotEuler);
+  const nodeToBody = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  src.traverse((node: any) => {
+    if (!node.isMesh || !node.geometry) return;
+    if (shouldSplitNode && !shouldSplitNode(node)) return;
+    const pos = node.geometry.attributes.position;
+    if (!pos) return;
+    nodeToBody.multiplyMatrices(rotMat, node.matrixWorld);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(nodeToBody);
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+    }
+  });
+  const centerX = Number.isFinite(minX) && Number.isFinite(maxX) ? (minX + maxX) / 2 : 0;
+
   const mkHalf = (keepLeft: boolean) => {
-    const clone = src.clone(true);
+    const clone = safeClone(src);
+    clone.position.set(0, 0, 0);
+    clone.rotation.set(0, 0, 0);
+    clone.scale.set(1, 1, 1);
+    clone.updateMatrixWorld(true);
     clone.traverse((node: any) => {
       if (!node.isMesh || !node.geometry) return;
+      if (shouldSplitNode && !shouldSplitNode(node)) return;
       try {
         const geo = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry;
         const pos = geo.attributes.position;
         if (!pos) { node.visible = keepLeft; return; }
+        nodeToBody.multiplyMatrices(rotMat, node.matrixWorld);
         const triCount = Math.floor(pos.count / 3);
-        const keepTri: boolean[] = new Array(triCount).fill(false);
-        for (let t = 0; t < triCount; t++) {
-          let c = 0;
-          for (let k = 0; k < 3; k++) { const i = t * 3 + k; c += useX ? pos.getX(i) : pos.getZ(i); }
-          c /= 3;
-          if ((c < center) === keepLeft) keepTri[t] = true;
-        }
         const idxArr: number[] = [];
-        const remap = new Map<number, number>();
         for (let t = 0; t < triCount; t++) {
-          if (!keepTri[t]) continue;
+          let cx = 0;
           for (let k = 0; k < 3; k++) {
-            const vi = t * 3 + k;
-            let ni = remap.get(vi);
-            if (ni === undefined) { ni = remap.size; remap.set(vi, ni); }
-            idxArr.push(ni);
+            v.fromBufferAttribute(pos, t * 3 + k).applyMatrix4(nodeToBody);
+            cx += v.x;
+          }
+          cx /= 3;
+          // Em skinview3d: leftLeg fica em +X e rightLeg fica em -X
+          const isLeftTri = cx >= centerX;
+          if (isLeftTri === keepLeft) {
+            const base = t * 3;
+            idxArr.push(base, base + 1, base + 2);
           }
         }
         if (idxArr.length < 3) { node.visible = false; return; }
@@ -89,18 +129,69 @@ function splitLegsByAxis(src: THREE.Object3D): { left: THREE.Object3D; right: TH
   return { left: mkHalf(true), right: mkHalf(false) };
 }
 
-/** Prende um objeto em uma perna, cancelando o pivot do osso da perna. */
-function attachToLeg(obj: THREE.Object3D, leg: any, side: number, transform: any) {
+/** Prende um objeto em uma perna preservando exatamente a posição calibrada em relação ao `body`. */
+function attachToLeg(obj: THREE.Object3D, leg: any, player: any, side: number, transform: any, defaultPosY = -15) {
   const scale = transform?.scale ?? 16;
   const thickness = transform?.thickness ?? 1;
   obj.scale.set(scale, scale, scale * thickness);
-  if (transform) obj.rotation.set(transform.rotX || 0, transform.rotY || 0, transform.rotZ || 0);
-  else obj.rotation.set(0, 0, 0);
-  obj.position.set(0, -16, 0);
+  if (transform) {
+    obj.position.set(transform.posX ?? 0, transform.posY ?? 0, transform.posZ ?? 0);
+    obj.rotation.set(transform.rotX || 0, transform.rotY || 0, transform.rotZ || 0);
+    if (transform.slide) obj.translateY(transform.slide);
+  } else {
+    obj.rotation.set(0, 0, 0);
+    obj.position.set(0, defaultPosY, 0);
+  }
+  const bodyPos = player?.skin?.body?.position;
+  const legPos = leg?.position;
   const wrapper = new THREE.Group();
-  wrapper.position.set(side * 2, 4, 0);
+  wrapper.position.set(
+    (bodyPos?.x ?? 0) - (legPos?.x ?? side * 1.9),
+    (bodyPos?.y ?? -6) - (legPos?.y ?? -12),
+    (bodyPos?.z ?? 0) - (legPos?.z ?? -0.1)
+  );
   wrapper.add(obj);
   leg.add(wrapper);
+}
+
+/** Converte eventuais SkinnedMesh em Mesh estática na pose padrão para permitir dividir e mover com as pernas. */
+function bakeSkinnedMeshesToStatic(root: THREE.Object3D): void {
+  const skinned: any[] = [];
+  root.traverse((n: any) => { if (n.isSkinnedMesh && n.geometry) skinned.push(n); });
+  if (skinned.length === 0) return;
+
+  root.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  skinned.forEach((sm: any) => {
+    try {
+      sm.skeleton?.update?.();
+      const geo = sm.geometry.clone();
+      const pos = geo.attributes.position;
+      if (pos && typeof sm.applyBoneTransform === 'function') {
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          sm.applyBoneTransform(i, v);
+          pos.setXYZ(i, v.x, v.y, v.z);
+        }
+        pos.needsUpdate = true;
+        geo.computeVertexNormals();
+        geo.computeBoundingBox();
+        geo.computeBoundingSphere();
+      }
+      delete (geo.attributes as any).skinIndex;
+      delete (geo.attributes as any).skinWeight;
+      const staticMesh = new THREE.Mesh(geo, sm.material);
+      staticMesh.name = sm.name;
+      staticMesh.position.copy(sm.position);
+      staticMesh.rotation.copy(sm.rotation);
+      staticMesh.scale.copy(sm.scale);
+      staticMesh.visible = sm.visible;
+      if (sm.parent) {
+        sm.parent.add(staticMesh);
+        sm.parent.remove(sm);
+      }
+    } catch { /* mantém nó original se falhar */ }
+  });
 }
 
 /**
@@ -108,22 +199,31 @@ function attachToLeg(obj: THREE.Object3D, leg: any, side: number, transform: any
  * o andar/correr. Usa primeiro os NOMES das malhas (left/right); se não houver, corta pela geometria.
  * Retorna true se tratou como pernas; false se o modelo não pôde ser dividido.
  */
-export function attachLegsToBones(model: THREE.Object3D, player: any, transform: any): boolean {
+export function attachLegsToBones(model: THREE.Object3D, player: any, transform: any, defaultPosY = -15): boolean {
   if (!player?.skin?.leftLeg || !player?.skin?.rightLeg) return false;
+  // Converte eventual SkinnedMesh (pacotes de botas/calças) em Mesh comum na pose de repouso
+  // para que cada lado acompanhe o movimento de andar/chutar em leftLeg/rightLeg.
+  bakeSkinnedMeshesToStatic(model);
+
   let hasL = false, hasR = false;
   model.traverse((n: any) => { if (n.isMesh) { const sd = classifySide(n); if (sd === 'left') hasL = true; if (sd === 'right') hasR = true; } });
   if (hasL || hasR) {
-    const mkSide = (keep: 'left' | 'right') => {
-      const clone = model.clone(true);
-      clone.traverse((n: any) => { if (n.isMesh) n.visible = classifySide(n) === keep; });
-      return clone;
+    // Malhas nomeadas usam visibilidade direta; malhas centrais ('none', ex: cintura/cinto) são divididas por eixo
+    const splitUnclassified = splitLegsByAxis(model, transform, (n) => classifySide(n) === 'none');
+    const applyNamedVisibility = (root: THREE.Object3D, keep: 'left' | 'right') => {
+      root.traverse((n: any) => {
+        if (!n.isMesh) return;
+        const sd = classifySide(n);
+        if (sd !== 'none') n.visible = sd === keep;
+      });
+      return root;
     };
-    attachToLeg(mkSide('left'), player.skin.leftLeg, 1, transform);
-    attachToLeg(mkSide('right'), player.skin.rightLeg, -1, transform);
+    attachToLeg(applyNamedVisibility(splitUnclassified.left, 'left'), player.skin.leftLeg, player, 1, transform, defaultPosY);
+    attachToLeg(applyNamedVisibility(splitUnclassified.right, 'right'), player.skin.rightLeg, player, -1, transform, defaultPosY);
   } else {
-    const halves = splitLegsByAxis(model);
-    attachToLeg(halves.left, player.skin.leftLeg, 1, transform);
-    attachToLeg(halves.right, player.skin.rightLeg, -1, transform);
+    const halves = splitLegsByAxis(model, transform);
+    attachToLeg(halves.left, player.skin.leftLeg, player, 1, transform, defaultPosY);
+    attachToLeg(halves.right, player.skin.rightLeg, player, -1, transform, defaultPosY);
   }
   return true;
 }

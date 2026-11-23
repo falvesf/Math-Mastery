@@ -14,6 +14,7 @@ import { isEffectAddType, EFFECT_ADD_LABELS } from '../lib/damageEffects';
 import { generateVoxelItemFromImage, updateVoxelCurve, setVoxelThickness } from '../lib/VoxelItemGenerator';
 import { getGlobalModelTransforms } from '../lib/itemTransforms';
 import { getEquippedSetAura, hexToRgba } from '../lib/equipAura';
+import { attachHeadAddonsToPlayer } from '../lib/avatarHeadAddons';
 import { Eye, EyeOff, PackageX } from 'lucide-react';
 
 export interface AvatarConfig {
@@ -614,6 +615,7 @@ function _tickForgeSpark() {
   _forgeSparkT += 0.05;
   _forgeSparkGroups.forEach(grp => {
     const model = grp.userData.forgeModel as THREE.Object3D | undefined;
+    if (!grp.parent) { _forgeSparkGroups.delete(grp); return; }
     const baseSize = (grp.userData.forgeSparkSize as number) || 2;
     const center = grp.userData.forgeCenter as THREE.Vector3 | undefined;
     const half = grp.userData.forgeHalf as THREE.Vector3 | undefined;
@@ -684,6 +686,7 @@ export function attachForgeSparkles(model: THREE.Object3D, tier: number, boxScal
     for (let i = 0; i < count; i++) {
       const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(starColors[i]), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, opacity: 0.7 });
       const spr = new THREE.Sprite(mat);
+      spr.scale.setScalar(0.001);
       _forgeRandomSurfacePoint(center, half, spr.position);
       spr.userData.vel = new THREE.Vector3(
         (Math.random() * 2 - 1) * size.x * rate,
@@ -2638,202 +2641,12 @@ if (visibleLeftCount > 0) processLoadedModel(cloneLeft, 'left', true);
       customHairRef.current = null;
     }
 
-    const hasHelmet = equippedItems.some(i => i.avatarPart === 'head' && (ignoreHiddenSlots || !config?.hiddenSlots?.includes('head')));
-    if (hasHelmet) return;
-
-    const addonsGroup = new THREE.Group();
-    let hasAddons = false;
-
-    if (config?.hairStyle === 'ponytail') {
-      const hairColor = config.hairColor || '#4a3000';
-      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
-      
-      const tieColor = config.hairTieColor || config.shirtColor || '#d63074';
-      const tieMaterial = new THREE.MeshBasicMaterial({ color: tieColor });
-
-      const length = config?.ponytailLength ?? 7;
-      const thickness = config?.ponytailThickness ?? 3.5;
-      const angle = (config?.ponytailAngle ?? 15) * (Math.PI / 180);
-
-      // Cabelo
-      const tailGeo = new THREE.BoxGeometry(thickness, length, thickness - 1);
-      const tailMesh = new THREE.Mesh(tailGeo, hairMaterial);
-      
-      // Ajuste para ficar preso atrás da cabeça e cair nas costas
-      tailMesh.position.set(0, - (length / 2), -5.25); 
-      tailMesh.rotation.x = angle;
-
-      // Laço
-      const tieGeo = new THREE.BoxGeometry(thickness + 1, 1.5, thickness);
-      const tieMesh = new THREE.Mesh(tieGeo, tieMaterial);
-      tieMesh.position.set(0, 0, -4.5);
-      tieMesh.rotation.x = angle;
-
-      addonsGroup.add(tailMesh);
-      addonsGroup.add(tieMesh);
-      hasAddons = true;
-    }
-
-    if (config?.hairStyle === 'spiky') {
-      const hairColor = config.hairColor || '#4a3000';
-      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
-      
-      const createSpike = (x: number, y: number, z: number, rotX: number, rotZ: number, scale = 1) => {
-          // ConeGeometry com 4 lados forma uma pirâmide perfeita (Minecraft style)
-          const spikeGeo = new THREE.ConeGeometry(1.6 * scale, 3.5 * scale, 4);
-          const spikeMesh = new THREE.Mesh(spikeGeo, hairMaterial);
-          spikeMesh.position.set(x, y, z);
-          // Math.PI / 4 no eixo Y alinha a base quadrada da pirâmide com a grade da cabeça
-          spikeMesh.rotation.set(rotX, Math.PI / 4, rotZ); 
-          return spikeMesh;
-      };
-
-      // O topo da cabeça é Y=8. Como o centro da pirâmide fica no meio da altura,
-      // um Y=8.5 afunda a base da pirâmide no topo da cabeça, evitando buracos.
-
-      // Espinho Central (maior, apontando reto)
-      addonsGroup.add(createSpike(0, 9.2, 0, 0, 0, 1.3));
-      
-      // Espinhos Frontais (inclinados para frente -> rotX negativo)
-      addonsGroup.add(createSpike(-2, 8.5, 2.5, -0.4, 0.3, 0.9));
-      addonsGroup.add(createSpike(2, 8.5, 2.5, -0.4, -0.3, 1.0));
-      addonsGroup.add(createSpike(0, 8.5, 3.5, -0.6, 0, 0.8)); // Franja espetada
-      
-      // Espinhos Traseiros (inclinados para trás -> rotX positivo)
-      addonsGroup.add(createSpike(-2.5, 8.5, -2.5, 0.4, 0.3, 0.8));
-      addonsGroup.add(createSpike(2.5, 8.5, -2.5, 0.4, -0.3, 0.9));
-      addonsGroup.add(createSpike(0, 8.3, -3.5, 0.6, 0, 0.7));
-      
-      // Espinhos Laterais (inclinados para os lados -> rotZ)
-      addonsGroup.add(createSpike(-3.5, 8.3, 0, 0, 0.6, 0.8));
-      addonsGroup.add(createSpike(3.5, 8.3, 0, 0, -0.6, 0.8));
-      
-      hasAddons = true;
-    }
-    
-    if (config?.hairStyle === 'long' && config?.gender !== 'male') {
-      const hairColor = config.hairColor || '#4a3000';
-      const hairMaterial = new THREE.MeshBasicMaterial({ color: hairColor });
-      
-      // Cabelo volumoso caindo nas costas
-      const backGeo = new THREE.BoxGeometry(8.5, 12, 1.5);
-      const backMesh = new THREE.Mesh(backGeo, hairMaterial);
-      // Fica pendurado atrás da cabeça (Z=-4.2), descendo até as costas (Y=-2)
-      backMesh.position.set(0, -2, -4.2); 
-      backMesh.rotation.x = 0.08; // Leve inclinação para trás para evitar clipar nas costas do corpo
-      addonsGroup.add(backMesh);
-      
-      // Mecha caindo no ombro esquerdo (perspectiva do personagem)
-      const leftFrontGeo = new THREE.BoxGeometry(2.5, 12, 1.5);
-      const leftFrontMesh = new THREE.Mesh(leftFrontGeo, hairMaterial);
-      leftFrontMesh.position.set(-4.5, -2, 1);
-      leftFrontMesh.rotation.x = -0.05; // Leve inclinação para frente
-      leftFrontMesh.rotation.z = 0.08;  // Leve inclinação para fora (longe do pescoço)
-      addonsGroup.add(leftFrontMesh);
-      
-      // Mecha caindo no ombro direito (perspectiva do personagem)
-      const rightFrontGeo = new THREE.BoxGeometry(2.5, 12, 1.5);
-      const rightFrontMesh = new THREE.Mesh(rightFrontGeo, hairMaterial);
-      rightFrontMesh.position.set(4.5, -2, 1);
-      rightFrontMesh.rotation.x = -0.05;
-      rightFrontMesh.rotation.z = -0.08;
-      addonsGroup.add(rightFrontMesh);
-      
-      hasAddons = true;
-    }
-
-    const accsToRender = config?.hairAccessories || [config?.hairAccessory || 'none'];
-    const fallbackColor = config?.accessoryColor || '#ff0000';
-    
-    accsToRender.forEach((acc, index) => {
-        if (acc === 'bow') {
-            const accColor = config?.accessoryColors?.[index] || fallbackColor;
-            const bowMaterial = new THREE.MeshBasicMaterial({ color: accColor });
-            
-            const loopGeo = new THREE.BoxGeometry(1.6, 1.6, 0.4);
-            const knotGeo = new THREE.BoxGeometry(0.8, 0.8, 0.6);
-            
-            const leftLoop = new THREE.Mesh(loopGeo, bowMaterial);
-            leftLoop.position.set(-1, 0, 0);
-            leftLoop.rotation.z = Math.PI / 8;
-            
-            const rightLoop = new THREE.Mesh(loopGeo, bowMaterial);
-            rightLoop.position.set(1, 0, 0);
-            rightLoop.rotation.z = -Math.PI / 8;
-            
-            const knot = new THREE.Mesh(knotGeo, bowMaterial);
-            knot.position.set(0, 0, 0.1);
-            
-            const bowGroup = new THREE.Group();
-            bowGroup.add(leftLoop);
-            bowGroup.add(rightLoop);
-            bowGroup.add(knot);
-            
-            // Posição no topo da cabeça à direita (perspectiva do personagem)
-            // A camada "chapéu" (cabelo) vai até ~Y=8.5, X=-4.5 e Z=4.5
-            bowGroup.position.set(-3.5, 8.4, 4.6);
-            bowGroup.rotation.x = -Math.PI / 10;
-            bowGroup.rotation.y = -Math.PI / 8;
-            bowGroup.rotation.z = Math.PI / 12;
-
-            addonsGroup.add(bowGroup);
-            hasAddons = true;
-        } else if (acc === 'flower') {
-            const accColor = config?.accessoryColors?.[index] || fallbackColor;
-            const flowerGroup = new THREE.Group();
-            
-            const petalMat = new THREE.MeshBasicMaterial({ color: accColor });
-            const centerMat = new THREE.MeshBasicMaterial({ color: '#f1c40f' });
-            
-            const petalGeo = new THREE.BoxGeometry(2, 2, 0.4);
-            const centerGeo = new THREE.BoxGeometry(1, 1, 0.6);
-            
-            const petals = new THREE.Mesh(petalGeo, petalMat);
-            const center = new THREE.Mesh(centerGeo, centerMat);
-            center.position.set(0, 0, 0.1);
-            
-            flowerGroup.add(petals);
-            flowerGroup.add(center);
-            
-            flowerGroup.position.set(-3.5, 8.4, 4.6);
-            flowerGroup.rotation.x = -Math.PI / 10;
-            flowerGroup.rotation.y = -Math.PI / 8;
-            flowerGroup.rotation.z = Math.PI / 12;
-
-            addonsGroup.add(flowerGroup);
-            hasAddons = true;
-        } else if (acc === 'headband') {
-            const accColor = config?.accessoryColors?.[index] || fallbackColor;
-            const headbandGroup = new THREE.Group();
-            
-            const mat = new THREE.MeshBasicMaterial({ color: accColor });
-            
-            // A cabeça e camada de cabelo chegam até ~Y=8.5 e X/Z=±4.5
-            const topGeo = new THREE.BoxGeometry(9.4, 0.4, 1.5);
-            const sideGeo = new THREE.BoxGeometry(0.4, 5, 1.5);
-            
-            const top = new THREE.Mesh(topGeo, mat);
-            top.position.set(0, 8.7, 1);
-            
-            const leftSide = new THREE.Mesh(sideGeo, mat);
-            leftSide.position.set(-4.5, 6.4, 1);
-            
-            const rightSide = new THREE.Mesh(sideGeo, mat);
-            rightSide.position.set(4.5, 6.4, 1);
-            
-            headbandGroup.add(top);
-            headbandGroup.add(leftSide);
-            headbandGroup.add(rightSide);
-            
-            addonsGroup.add(headbandGroup);
-            hasAddons = true;
-        }
-    });
-
-    if (hasAddons) {
-      viewer.playerObject.skin.head.add(addonsGroup);
-      customHairRef.current = addonsGroup;
-    }
+    customHairRef.current = attachHeadAddonsToPlayer(
+      viewer.playerObject,
+      config,
+      equippedItems,
+      ignoreHiddenSlots
+    );
   }, [config?.hairStyle, config?.hairColor, config?.hairTieColor, config?.shirtColor, config?.ponytailLength, config?.ponytailThickness, config?.ponytailAngle, config?.hairAccessories, config?.hairAccessory, config?.accessoryColor, config?.accessoryColors, equippedItemsJson, config?.hiddenSlots?.join(','), hideConfigAddons, ignoreHiddenSlots]);
 
   // 4. Generate skins when config changes
