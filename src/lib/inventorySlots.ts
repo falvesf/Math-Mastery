@@ -38,9 +38,54 @@ export function computeBaseInventorySpace(userData?: Partial<UserData> | null): 
   return 12 + rankIndex + extra + getActiveInventorySpaceBuff(userData);
 }
 
-/** Capacidade TOTAL (base + slots de fortitude dos itens equipados). */
+function parseJsonSafe<T>(val: any, fallback: T): T {
+  if (val == null) return fallback;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return fallback; }
+  }
+  return val;
+}
+
+/** Calcula quantos slots extras de Fortitude o usuário ganha (itens equipados + atributos distribuídos). */
+export function computeFortitudeSlots(userData?: Partial<UserData> | null, rows: any[] = []): number {
+  const distStats = parseJsonSafe<Record<string, number>>(
+    userData?.distributedStats ?? (userData as any)?.distributed_stats,
+    {}
+  );
+  const equippedItems = (rows || [])
+    .filter((r: any) => Boolean(r?.equipped))
+    .map((r: any) => {
+      const d = r?.data || r || {};
+      return {
+        ...r,
+        ...d,
+        adds: parseJsonSafe(d.adds ?? r?.adds, []),
+        fixedAttributes: parseJsonSafe(d.fixedAttributes ?? r?.fixedAttributes, []),
+      };
+    });
+  const stats = calculateTotalStats(equippedItems, distStats);
+  return Math.max(0, Math.floor((stats?.fortitude || 0) / 1));
+}
+
+/** Conta quantos slots da mochila estão realmente ocupados (ignora equipados, à venda no bazar e dropados). */
+export function countOccupiedBagSlots(rows: any[] = []): number {
+  return (rows || []).filter((r: any) => {
+    if (!r || r.equipped) return false;
+    const d = r.data || {};
+    if (d.forSale || r.forSale || d.isDropped || r.isDropped) return false;
+    if (r.student_id === 'dropped' || d.studentId === 'dropped') return false;
+    return true;
+  }).length;
+}
+
+/** Capacidade TOTAL (base + bônus/buff + fortitude dos itens equipados e atributos distribuídos). */
 export function computeMaxInventorySpace(userData?: Partial<UserData> | null, fortitudeSlots = 0): number {
   return computeBaseInventorySpace(userData) + Math.max(0, Math.floor(fortitudeSlots || 0));
+}
+
+/** Capacidade TOTAL calculada diretamente a partir do usuário + linhas de `user_items`. */
+export function computeMaxInventorySpaceFromRows(userData?: Partial<UserData> | null, rows: any[] = []): number {
+  return computeMaxInventorySpace(userData, computeFortitudeSlots(userData, rows));
 }
 
 /**
@@ -81,13 +126,9 @@ export function filterAvailableRows(
     extraSlots = Math.floor((stats?.fortitude || 0) / 1);
   }
 
-  // Se extraSlots ainda for 0, tenta derivar de itens equipados em rows (se rows contiver itens equipados)
+  // Se extraSlots ainda for 0, deriva de itens equipados em rows + distributedStats
   if (extraSlots <= 0) {
-    const equippedInRows = rows.filter((r: any) => r.equipped);
-    if (equippedInRows.length > 0) {
-      const stats = calculateTotalStats(equippedInRows.map((r: any) => ({ ...r, ...(r.data || {}) })), userData?.distributedStats || (userData as any)?.distributed_stats);
-      extraSlots = Math.floor((stats?.fortitude || 0) / 1);
-    }
+    extraSlots = computeFortitudeSlots(userData, rows);
   }
 
   const effectiveSlotMap = slotMap || userData?.inventoryPreferences?.slotMap || (userData as any)?.inventory_preferences?.slotMap || {};
@@ -100,6 +141,38 @@ export function filterAvailableRows(
 /** Quantos slots LIVRES existem (capacidade − itens não equipados atuais). */
 export function getAvailableInventorySpace(userData?: Partial<UserData> | null, totalBagCount = 0, fortitudeSlots = 0): number {
   return Math.max(0, computeMaxInventorySpace(userData, fortitudeSlots) - (totalBagCount || 0));
+}
+
+/** Consulta real no banco (user_items + fortitude + bônus/patente) para verificar espaço livre com exatidão. */
+export async function fetchUserInventorySpace(
+  studentId: string,
+  userDataOverride?: Partial<UserData> | any
+): Promise<{ occupied: number; maxSpace: number; free: number; fortitudeSlots: number; rows: any[] }> {
+  const [{ data: rowsSnap }, userRes] = await Promise.all([
+    supabase.from('user_items').select('id, equipped, data').eq('student_id', studentId),
+    userDataOverride && (userDataOverride.distributedStats || userDataOverride.distributed_stats)
+      ? Promise.resolve({ data: userDataOverride })
+      : supabase
+          .from('users')
+          .select('id, xp, class_id, extra_inventory_space, inventory_space_buff, inventory_space_buff_until, distributed_stats')
+          .eq('id', studentId)
+          .maybeSingle(),
+  ]);
+
+  const rows = rowsSnap || [];
+  const mergedUser = userRes?.data
+    ? { ...(userRes.data as any), ...(userDataOverride || {}) }
+    : userDataOverride;
+  const fortitudeSlots = computeFortitudeSlots(mergedUser, rows);
+  const maxSpace = computeMaxInventorySpace(mergedUser, fortitudeSlots);
+  const occupied = countOccupiedBagSlots(rows);
+  return {
+    occupied,
+    maxSpace,
+    free: Math.max(0, maxSpace - occupied),
+    fortitudeSlots,
+    rows,
+  };
 }
 
 /** Aplica o effect de aumento de mochila (inventory_space) na conta. */

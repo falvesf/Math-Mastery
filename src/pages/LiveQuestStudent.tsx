@@ -22,7 +22,7 @@ import { getEquippedDamageEffect, getEquippedDamageEffectInfo, FREEZE_HITS_TO_FR
 import { useDialog } from '../contexts/DialogContext';
 // @ts-ignore
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
-import { filterAvailableRows, getAvailableInventorySpace } from '../lib/inventorySlots';
+import { filterAvailableRows, fetchUserInventorySpace } from '../lib/inventorySlots';
 import { getMaxAddsLimit } from '../lib/ranks';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import { fetchModel3DById, fetchActiveCoin, fetchActiveChest } from '../lib/model3d';
@@ -660,8 +660,8 @@ export default function LiveQuestStudent() {
           scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
         };
         // "Inventário cheio": o drop não entra na mochila até liberar espaço.
-        const { count: liveDropSpace } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', userData.uid).eq('equipped', false);
-        if (getAvailableInventorySpace(userData, liveDropSpace || 0) > 0) {
+        const bagSpace = await fetchUserInventorySpace(userData.uid, userData);
+        if (bagSpace.free > 0) {
           await supabase.from('user_items').insert({
             student_id: userData.uid,
             item_id: item.id,

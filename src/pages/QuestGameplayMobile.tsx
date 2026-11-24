@@ -20,7 +20,7 @@ import MonsterProjectileView from '../components/MonsterProjectileView';
 import type { GameEffectType } from '../components/AdminStoreManager';
 import type { QuestDef } from './AdminDashboard';
 import { calculateTotalStats, rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
-import { filterAvailableRows, getAvailableInventorySpace } from '../lib/inventorySlots';
+import { filterAvailableRows, fetchUserInventorySpace } from '../lib/inventorySlots';
 import { getMaxAddsLimit } from '../lib/ranks';
 import { getSafeUrl, normalizeCombatCoinDrop } from '../lib/utils';
 import { playSound, fadeOutAllSounds, playCoinCollect, resolveAudioUrl } from '../lib/audioBank';
@@ -3002,8 +3002,8 @@ const dealTransformDamageToPlayer = (damage: number) => {
                   scrollChanceBonus: item.scrollChanceBonus ?? (item.gameEffect === 'blacksmith_scroll' ? 30 : null)
                 };
                 // "Inventário cheio": o item NÃO entra na mochila até liberar espaço.
-                const { count: chestSpaceCount } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', userData!.uid).eq('equipped', false);
-                if (getAvailableInventorySpace(userData, chestSpaceCount || 0) <= 0) {
+                const chestSpace = await fetchUserInventorySpace(userData!.uid, userData);
+                if (chestSpace.free <= 0) {
                   setBattleMessage('🎒 Inventário cheio! Algumas recompensas do baú não puderam ser guardadas.');
                 } else {
                   await supabase.from('user_items').insert({

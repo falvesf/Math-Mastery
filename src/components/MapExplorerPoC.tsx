@@ -9,7 +9,7 @@ import * as THREE from 'skinview3d/node_modules/three';
 import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { generateMinecraftSkinUrl } from '../lib/SkinGenerator';
 import { generateVoxelItemFromImage } from '../lib/VoxelItemGenerator';
-import { getAvailableInventorySpace } from '../lib/inventorySlots';
+import { fetchUserInventorySpace } from '../lib/inventorySlots';
 import { applyForgeGlowToModel, applyForgeGlint, resolveModelTransform, type AvatarConfig, type EquippedItem } from './AvatarCharacter';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchEquippedItems, invalidateEquippedItems } from '../lib/equippedItems';
@@ -4368,8 +4368,8 @@ const slime: Slime = { x: gx, z: gz, root, mesh: m, tx: wx(gx), tz: wz(gz), t: 0
                   return;
                 }
               }
-              const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', studentId).eq('equipped', false);
-              if (getAvailableInventorySpace(userData, count || 0) <= 0) {
+              const bagSpace = await fetchUserInventorySpace(studentId, userData);
+              if (bagSpace.free <= 0) {
                 callbacks.current.setMsg('🎒 Inventário cheio! Libere espaço para coletar o item.');
                 return;
               }

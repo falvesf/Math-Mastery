@@ -5,7 +5,7 @@ import { useTenant } from '../contexts/TenantContext';
 import { supabase } from '../lib/supabase';
 import { rollItemAdds, fetchGlobalGachaConfig } from '../lib/gacha';
 import { applyEffectAdd, isEffectAddType } from '../lib/damageEffects';
-import { getAvailableInventorySpace, computeMaxInventorySpace, getActiveInventorySpaceBuff } from '../lib/inventorySlots';
+import { computeMaxInventorySpace, computeMaxInventorySpaceFromRows, computeFortitudeSlots, countOccupiedBagSlots, getActiveInventorySpaceBuff } from '../lib/inventorySlots';
 import { invalidateEquippedItems } from '../lib/equippedItems';
 import { getRankForXp, getMaxAddsLimit } from '../lib/ranks';
 import { formatAdminFirstName } from '../lib/formatAdminName';
@@ -647,9 +647,10 @@ export default function AdminConsole() {
 
           const { data: pItems } = await supabase
             .from('user_items')
-            .select('id, equipped')
+            .select('id, equipped, data')
             .eq('student_id', targetId);
 
+          const pRows = pItems || [];
           const resetUser = {
             ...targetUser,
             extra_inventory_space: 0,
@@ -659,8 +660,8 @@ export default function AdminConsole() {
             inventory_space_buff_until: null,
             inventorySpaceBuffUntil: null,
           };
-          const unequipped = (pItems || []).filter(r => !r.equipped).length;
-          const defaultMax = computeMaxInventorySpace(resetUser);
+          const unequipped = countOccupiedBagSlots(pRows);
+          const defaultMax = computeMaxInventorySpaceFromRows(resetUser, pRows);
           const free = Math.max(0, defaultMax - unequipped);
 
           addLine(`[SUCESSO] Slots de ${isSelf ? 'sua mochila' : targetName} foram resetados para o padrão original (patente + fortitude)!`, 'success');
@@ -701,12 +702,13 @@ export default function AdminConsole() {
 
           const { data: pItems } = await supabase
             .from('user_items')
-            .select('id, equipped')
+            .select('id, equipped, data')
             .eq('student_id', targetId);
 
+          const pRows = pItems || [];
           const updatedUser = { ...targetUser, extra_inventory_space: newExtra, extraInventorySpace: newExtra };
-          const unequipped = (pItems || []).filter(r => !r.equipped).length;
-          const newMax = computeMaxInventorySpace(updatedUser);
+          const unequipped = countOccupiedBagSlots(pRows);
+          const newMax = computeMaxInventorySpaceFromRows(updatedUser, pRows);
           const free = Math.max(0, newMax - unequipped);
 
           const signText = delta > 0 ? `+${delta}` : `${delta}`;
@@ -724,18 +726,21 @@ export default function AdminConsole() {
       try {
         const { data: pItems } = await supabase
           .from('user_items')
-          .select('id, equipped')
+          .select('id, equipped, data')
           .eq('student_id', targetId);
 
-        const unequipped = (pItems || []).filter(r => !r.equipped).length;
-        const max = computeMaxInventorySpace(targetUser);
+        const pRows = pItems || [];
+        const unequipped = countOccupiedBagSlots(pRows);
+        const fortSlots = computeFortitudeSlots(targetUser, pRows);
+        const max = computeMaxInventorySpace(targetUser, fortSlots);
         const free = Math.max(0, max - unequipped);
         const curExtra = Number(targetUser.extra_inventory_space ?? targetUser.extraInventorySpace) || 0;
         const curBuff = getActiveInventorySpaceBuff(targetUser);
 
         addLine(`🎒 ${isSelf ? 'Sua Mochila' : `Mochila de ${targetName}`}: ${unequipped} / ${max} slots ocupados. (${free} slot(s) livre(s))`, 'info');
-        if (curExtra !== 0 || curBuff > 0) {
+        if (curExtra !== 0 || curBuff > 0 || fortSlots > 0) {
           const details: string[] = [];
+          if (fortSlots > 0) details.push(`Fortitude: +${fortSlots} slots`);
           if (curExtra !== 0) details.push(`Bônus permanente: ${curExtra > 0 ? `+${curExtra}` : curExtra} slots`);
           if (curBuff > 0) details.push(`Buff temporário: +${curBuff} slots`);
           addLine(`   • Modificadores ativos: ${details.join(' | ')}`, 'output');
@@ -1125,8 +1130,8 @@ export default function AdminConsole() {
           .eq('student_id', recipientId);
 
         const currentRows = recipientItemsSnap || [];
-        const unequippedRows = currentRows.filter(r => !r.equipped);
-        const maxSpace = computeMaxInventorySpace(recipientUser);
+        const unequippedRows = currentRows.filter(r => !r.equipped && !r.data?.forSale && !r.data?.isDropped && r.data?.studentId !== 'dropped');
+        const maxSpace = computeMaxInventorySpaceFromRows(recipientUser, currentRows);
         const freeSlots = Math.max(0, maxSpace - unequippedRows.length);
 
         if (isEquippable) {

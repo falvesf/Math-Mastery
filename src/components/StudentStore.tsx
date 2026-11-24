@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { ShoppingCart, Star, Coins, Store, Filter, Eye, X, ShieldAlert, Gift, Search, Edit3, Trash2, LayoutGrid, Grid, List as ListIcon, FlaskConical, Sword, Shield, Package, Sparkles, Swords } from 'lucide-react';
 import type { UserData } from '../contexts/AuthContext';
 import { isRanchUnlocked, isHiddenByRanchLock, isRanchLicense } from '../lib/ranch';
-import { computeMaxInventorySpace, applyInventorySpaceEffect, getAvailableInventorySpace } from '../lib/inventorySlots';
+import { computeMaxInventorySpace, applyInventorySpaceEffect, fetchUserInventorySpace } from '../lib/inventorySlots';
 import { useTenant } from '../contexts/TenantContext';
 import { fetchEconomySettings } from '../lib/economy';
 import { useDialog } from '../contexts/DialogContext';
@@ -538,18 +538,10 @@ gameEffect: item.gameEffect || 'none',
     }
 
     // Presente: o DESTINATÁRIO precisa de espaço na mochila para receber.
-    if (isGift) {
+    if (isGift && recipientId) {
       try {
-        const { data: rec } = await supabase.from('users').select('id, xp, class_id, extra_inventory_space, inventory_space_buff, inventory_space_buff_until').eq('id', recipientId).single();
-        const { count } = await supabase.from('user_items').select('id', { count: 'exact', head: true }).eq('student_id', recipientId).eq('equipped', false);
-        const recUserData = {
-          xp: rec?.xp || 0,
-          classId: (rec as any)?.class_id || undefined,
-          extraInventorySpace: (rec as any)?.extra_inventory_space || 0,
-          inventorySpaceBuff: (rec as any)?.inventory_space_buff || 0,
-          inventorySpaceBuffUntil: (rec as any)?.inventory_space_buff_until ? new Date((rec as any).inventory_space_buff_until).getTime() : null,
-        };
-        if (getAvailableInventorySpace(recUserData as any, count || 0) <= 0) {
+        const recSpace = await fetchUserInventorySpace(recipientId);
+        if (recSpace.free <= 0) {
           showToast('Inventário cheio! O destinatário não pode receber o presente agora (liberar espaço).', 'error');
           return;
         }
