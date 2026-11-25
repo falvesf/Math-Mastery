@@ -27,8 +27,8 @@ export interface StageOrderItem {
 
 export const CAMPAIGN_ORDER: StageOrderItem[] = [
   { id: 'stage1_streets', label: '🌆 Estágio 1: Slum, Galpão, Ferro-Velho & Dande', length: 472, bossHpMultiplier: 7, bossDisplayName: 'Dande' },
-  { id: 'stage2_subway', label: '🚇 Estágio 2: Estação, Metrô & Ringue (Sodom)', length: 520, bossHpMultiplier: 10, bossDisplayName: 'Sodom' },
-  { id: 'bonus_car', label: '🚗 Bônus 1: Destrua o Carro!', length: 22, bossHpMultiplier: 1, bossDisplayName: 'Carro Turbo', isBonus: true, bonusKind: 'car' },
+  { id: 'stage2_subway', label: '🚇 Estágio 2: Estação, Metrô, Galeria & Ringue (Sodom)', length: 562, bossHpMultiplier: 10, bossDisplayName: 'Sodom' },
+  { id: 'bonus_car', label: '🚗 Bônus 1: Posto de Gasolina — Destrua o Carro!', length: 24, bossHpMultiplier: 1, bossDisplayName: 'Carro Sedan', isBonus: true, bonusKind: 'car' },
   { id: 'stage3_westside', label: '🎪 Estágio 3: Restaurante, Arena dos Andores & Festival (Eddie)', length: 554, bossHpMultiplier: 13, bossDisplayName: 'Eddie' },
   { id: 'stage4_industrial', label: '🏭 Estágio 4: Indústria, Elevador & Rolento', length: 300, bossHpMultiplier: 16, bossDisplayName: 'Rolento' },
   { id: 'bonus_glass', label: '🪟 Bônus 2: Quebre as Vidraças!', length: 46, bossHpMultiplier: 1, bossDisplayName: 'Vidraças', isBonus: true, bonusKind: 'glass' },
@@ -70,9 +70,10 @@ export function getStageZones(stageId: ArcadeStageId): StageZoneDef[] {
   }
   if (stageId === 'stage2_subway') {
     return [
-      { minX: 0, maxX: 84, startX: 0.6 },
-      { minX: 200, maxX: 294, startX: 202.5 },
-      { minX: 400, maxX: 520, startX: 402.5, preBossX: 472 },
+      { minX: 0, maxX: 88, startX: 2.2 },
+      { minX: 180, maxX: 304, startX: 183.0 },
+      { minX: 380, maxX: 452, startX: 383.5, preBossX: 432 },
+      { minX: 520, maxX: 562, startX: 521.2, preBossX: 528 },
     ];
   }
   if (stageId === 'stage3_westside') {
@@ -109,17 +110,25 @@ export function getStagePortals(stageId: ArcadeStageId): StagePortalDef[] {
     return [
       {
         zoneIdx: 0,
-        triggerX: 79.5,
+        triggerX: 82.5,
         destZoneIdx: 1,
-        destX: 202.5,
-        banner: '🚇 EMBARCANDO NO ÚLTIMO VAGÃO...',
+        destX: 183.0,
+        banner: '🚇 EMBARCANDO NO METRÔ EM MOVIMENTO...',
       },
       {
         zoneIdx: 1,
-        triggerX: 290.5,
+        triggerX: 9999,
+        autoOnWaveIdx: 7,
         destZoneIdx: 2,
-        destX: 402.5,
-        banner: '🏃 SAINDO NA ESTAÇÃO SUBTERRÂNEA...',
+        destX: 383.5,
+        banner: '🛤️ TREM PAROU! SAINDO PELA GALERIA SUBTERRÂNEA...',
+      },
+      {
+        zoneIdx: 2,
+        triggerX: 447.5,
+        destZoneIdx: 3,
+        destX: 521.2,
+        banner: '🥊 ENTRANDO NA ARENA SUBTERRÂNEA DO SODOM...',
       },
     ];
   }
@@ -202,10 +211,12 @@ export interface ArcadeWaveDef {
   isBossWave?: boolean;
   isElevatorWave?: boolean;
   spawns: {
-    side: 'front' | 'back' | 'drop' | 'door';
+    side: 'front' | 'back' | 'drop' | 'door' | 'seat';
     zOffset: number;
     doorX?: number;
     doorZ?: number;
+    seatX?: number;
+    seatZ?: number;
     isBoss?: boolean;
     isSubBoss?: boolean;
     isFireSquad?: boolean;
@@ -512,98 +523,97 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
   if (stageId === 'stage2_subway') {
     return [
       {
-        triggerX: 12, lockMinX: 3, lockMaxX: 23, label: 'ESTAÇÃO DO METRÔ — DESÇA À PLATAFORMA!',
+        triggerX: 17, lockMinX: 8, lockMaxX: 30, label: 'ESTAÇÃO DO METRÔ — CABINE TELEFÔNICA & SLASH!',
         spawns: [
-          { side: 'front', zOffset: -0.7, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 1 },
-          { side: 'back', zOffset: 0.1, gangIdx: 2 },
-          { side: 'front', zOffset: -0.1, gangIdx: 4 },
+          { side: 'front', zOffset: -0.7, gangIdx: 2 },
+          { side: 'front', zOffset: 0.9, gangIdx: 8 },
+          { side: 'back', zOffset: 0.1, gangIdx: 0 },
+          { side: 'front', zOffset: -0.1, gangIdx: 1 },
         ],
       },
       {
-        triggerX: 34, lockMinX: 25, lockMaxX: 45, label: 'PLATAFORMA CENTRAL — PUNKS & GORDINHOS!',
+        triggerX: 40, lockMinX: 31, lockMaxX: 52, label: 'PLATAFORMA CENTRAL — PUNKS & GORDINHOS!',
         spawns: [
           { side: 'front', zOffset: -1.0, gangIdx: 4 },
           { side: 'front', zOffset: 0.8, gangIdx: 7 },
           { side: 'back', zOffset: -0.4, gangIdx: 3 },
-          { side: 'back', zOffset: 1.2, gangIdx: 6 },
-        ],
-      },
-      {
-        triggerX: 55, lockMinX: 46, lockMaxX: 66, label: 'VAGÕES ESTACIONADOS — NINJAS & BRUTAMONTES!',
-        spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 9 },
-          { side: 'front', zOffset: 0.6, gangIdx: 6 },
-          { side: 'back', zOffset: 0.2, gangIdx: 8 },
-          { side: 'back', zOffset: -1.2, gangIdx: 2 },
-        ],
-      },
-      {
-        triggerX: 73, lockMinX: 64, lockMaxX: 82, label: 'ÚLTIMO VAGÃO — ANDORE GUARDA A PORTA ABERTA!',
-        spawns: [
-          { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 0 },
-          { side: 'back', zOffset: -0.9, gangIdx: 5 },
-        ],
-      },
-      {
-        triggerX: 212, lockMinX: 203, lockMaxX: 223, label: 'DENTRO DO TREM — VAGÃO 1!',
-        spawns: [
-          { side: 'front', zOffset: -0.9, gangIdx: 2 },
-          { side: 'front', zOffset: 0.8, gangIdx: 4 },
-          { side: 'back', zOffset: -0.2, gangIdx: 5 },
-          { side: 'front', zOffset: 0.1, gangIdx: 0 },
-        ],
-      },
-      {
-        triggerX: 237, lockMinX: 228, lockMaxX: 248, label: 'DENTRO DO TREM — VAGÃO DO MEIO (ANDORE!)',
-        spawns: [
-          { side: 'front', zOffset: -0.5, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.8, gangIdx: 8 },
-          { side: 'back', zOffset: 0.2, gangIdx: 6 },
-          { side: 'back', zOffset: -1.0, gangIdx: 3 },
-        ],
-      },
-      {
-        triggerX: 263, lockMinX: 254, lockMaxX: 274, label: '🔥 TREM — BANDO DE NINJAS DO FOGO!',
-        spawns: [
-          { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: -0.2, isSubBoss: true, gangIdx: 1 },
-          { side: 'back', zOffset: 1.0, gangIdx: 7 },
-        ],
-      },
-      {
-        triggerX: 284, lockMinX: 275, lockMaxX: 292, label: 'VAGÃO FINAL — ANDORE NA PORTA DE SAÍDA!',
-        spawns: [
-          { side: 'front', zOffset: 0.0, isAndore: true, gangIdx: 1 },
-          { side: 'front', zOffset: 0.9, gangIdx: 6 },
-          { side: 'back', zOffset: -0.8, gangIdx: 4 },
-        ],
-      },
-      {
-        triggerX: 416, lockMinX: 407, lockMaxX: 427, label: 'VIELA DA SAÍDA DO METRÔ!',
-        spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 5 },
-          { side: 'front', zOffset: 0.7, gangIdx: 8 },
-          { side: 'back', zOffset: 0.1, isSubBoss: true, gangIdx: 2 },
-          { side: 'back', zOffset: -1.2, gangIdx: 2 },
-        ],
-      },
-      {
-        triggerX: 448, lockMinX: 439, lockMaxX: 460, label: 'CORREDOR DO RINGUE — GUARDA PESADA!',
-        spawns: [
-          { side: 'front', zOffset: -1.0, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 4 },
-          { side: 'back', zOffset: -0.3, gangIdx: 11 },
           { side: 'back', zOffset: 1.1, gangIdx: 6 },
         ],
       },
       {
-        triggerX: 492, lockMinX: 482, lockMaxX: 514, label: '⚠️ RINGUE SUBTERRÂNEO — SODOM!', isBossWave: true,
+        triggerX: 58, lockMinX: 49, lockMaxX: 69, label: 'VAGÕES ESTACIONADOS — POISON & NINJAS!',
         spawns: [
-          { side: 'front', zOffset: -1.2, gangIdx: 6 },
-          { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 0 },
+          { side: 'front', zOffset: -1.0, gangIdx: 2 },
+          { side: 'front', zOffset: 0.6, gangIdx: 6 },
+          { side: 'back', zOffset: 0.2, gangIdx: 9 },
+          { side: 'back', zOffset: -1.1, gangIdx: 5 },
+        ],
+      },
+      {
+        triggerX: 74, lockMinX: 65, lockMaxX: 84, label: 'ÚLTIMO VAGÃO — HOLLY WOOD & ANDORE JR.!',
+        spawns: [
+          { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, gangIdx: 6 },
+          { side: 'back', zOffset: -0.8, isSubBoss: true, gangIdx: 0 },
+        ],
+      },
+      {
+        triggerX: 190, lockMinX: 182, lockMaxX: 205, label: '🚇 VAGÃO 1 — GANGUE SENTADA NOS BANCOS!',
+        spawns: [
+          { side: 'seat', seatX: 196.5, seatZ: -2.15, zOffset: -0.6, gangIdx: 0 },
+          { side: 'seat', seatX: 198.2, seatZ: -2.15, zOffset: 0.4, gangIdx: 5 },
+          { side: 'seat', seatX: 200.0, seatZ: -2.15, zOffset: 0.9, gangIdx: 1 },
+          { side: 'front', zOffset: -0.2, gangIdx: 3 },
+        ],
+      },
+      {
+        triggerX: 218, lockMinX: 210, lockMaxX: 235, label: '🚇 VAGÃO 2 — ANDORE JR. & ACROBATAS!',
+        spawns: [
+          { side: 'front', zOffset: -0.5, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.8, gangIdx: 6 },
+          { side: 'back', zOffset: 0.2, gangIdx: 2 },
+          { side: 'back', zOffset: -1.0, gangIdx: 8 },
+        ],
+      },
+      {
+        triggerX: 249, lockMinX: 241, lockMaxX: 266, label: '🚇 VAGÃO 3 — AXL, SLASH & SEGUNDO ANDORE!',
+        spawns: [
+          { side: 'front', zOffset: -0.8, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, gangIdx: 8 },
+          { side: 'back', zOffset: -0.2, isSubBoss: true, gangIdx: 1 },
+          { side: 'back', zOffset: 1.0, gangIdx: 0 },
+        ],
+      },
+      {
+        triggerX: 280, lockMinX: 272, lockMaxX: 299, label: '🚇 PONTA ABERTA DO TREM — BARRIS, EL GADO & ANDORE!',
+        spawns: [
+          { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, gangIdx: 6 },
+          { side: 'back', zOffset: -0.8, gangIdx: 4 },
+          { side: 'front', zOffset: 0.2, gangIdx: 2 },
+        ],
+      },
+      {
+        triggerX: 396, lockMinX: 386, lockMaxX: 412, label: '🛤️ GALERIA DE TIJOLOS VERDES — SAÍDA DOS TRILHOS!',
+        spawns: [
+          { side: 'front', zOffset: -1.0, gangIdx: 5 },
+          { side: 'front', zOffset: 0.7, gangIdx: 8 },
+          { side: 'back', zOffset: 0.1, gangIdx: 0 },
+          { side: 'front', zOffset: -0.3, gangIdx: 3 },
+        ],
+      },
+      {
+        triggerX: 425, lockMinX: 415, lockMaxX: 442, label: '🔥 GALERIA FINAL — NINJAS VERMELHOS & GUARDA DO RINGUE!',
+        spawns: [
+          { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 2 },
+          { side: 'back', zOffset: -0.3, gangIdx: 8 },
+          { side: 'front', zOffset: 0.4, gangIdx: 5 },
+        ],
+      },
+      {
+        triggerX: 527, lockMinX: 525, lockMaxX: 557, label: '⚔️ RINGUE SUBTERRÂNEO — SODOM!', isBossWave: true,
+        spawns: [
           { side: 'front', zOffset: 0.0, isBoss: true, gangIdx: 0 },
         ],
       },
@@ -1075,6 +1085,129 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     refs.breakableProps.push({ id: propSeq++, kind: 'cone', x, z, y, mesh: grp });
   };
 
+  const crateTexShared = makeCrateTexture();
+
+  const addCitySkylineStrip = (startX: number, endX: number, baseZ: number) => {
+    for (let sx = startX, si = 0; sx <= endX; sx += 4.6, si++) {
+      const bh = 9 + (si % 4) * 3.5;
+      const bw = 3.8 + (si % 2) * 0.8;
+      const bMat = new THREE.MeshStandardMaterial({
+        color: si % 3 === 0 ? 0x1e3a8a : si % 3 === 1 ? 0x334155 : 0x0f274d,
+        roughness: 0.85,
+      });
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 2.5), bMat);
+      tower.position.set(sx, bh / 2 - 0.5, baseZ - (si % 2) * 2.2);
+      scene.add(tower);
+      const winStrip = new THREE.Mesh(
+        new THREE.PlaneGeometry(bw * 0.72, bh * 0.78),
+        new THREE.MeshBasicMaterial({ color: si % 2 === 0 ? 0x38bdf8 : 0x93c5fd, transparent: true, opacity: 0.28 })
+      );
+      winStrip.position.set(sx, bh / 2 - 0.5, baseZ - (si % 2) * 2.2 + 1.28);
+      scene.add(winStrip);
+    }
+  };
+
+  const addRustMetalBarrelProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop'], isPreBoss?: boolean) => {
+    const grp = new THREE.Group();
+    const barrelTexRust = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#9a3412'; ctx.fillRect(4, 0, 14, 64);
+      ctx.fillStyle = '#451a03'; ctx.fillRect(0, 18, 64, 4); ctx.fillRect(0, 44, 64, 4);
+    });
+    const cyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.42, 1.05, 14),
+      new THREE.MeshStandardMaterial({ map: barrelTexRust, roughness: 0.72, metalness: 0.25 })
+    );
+    cyl.position.y = 0.525; grp.add(cyl);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.08, 14), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+    rim.position.y = 1.02; grp.add(rim);
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'barrel', x, z, y: 0, mesh: grp, hp: 35, solidTop: 1.05, guaranteedDrop, isPreBoss });
+  };
+
+  const addWoodBarrelProp = (x: number, z: number, scaleXZ = 1.0, guaranteedDrop?: BreakablePropDef['guaranteedDrop'], isPreBoss?: boolean) => {
+    const grp = new THREE.Group();
+    const woodTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#92400e'; ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#78350f';
+      for (let px = 0; px < 64; px += 8) ctx.fillRect(px, 0, 2, 64);
+      ctx.fillStyle = '#334155'; ctx.fillRect(0, 10, 64, 6); ctx.fillRect(0, 48, 64, 6);
+    });
+    const cyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.46 * scaleXZ, 0.42 * scaleXZ, 1.15, 12),
+      new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.8 })
+    );
+    cyl.position.y = 0.575; grp.add(cyl);
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'wood_barrel', x, z, y: 0, mesh: grp, hp: 38, solidTop: 1.15, guaranteedDrop, isPreBoss });
+  };
+
+  const addBigCrateProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop'], isPreBoss?: boolean) => {
+    const grp = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.45, 1.3), new THREE.MeshStandardMaterial({ map: crateTexShared, roughness: 0.78 }));
+    box.position.y = 0.725; grp.add(box);
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'crate', x, z, y: 0, mesh: grp, hp: 42, solidTop: 1.45, guaranteedDrop, isPreBoss });
+  };
+
+  const addPhoneBoothProp = (x: number, z: number, guaranteedDrop: BreakablePropDef['guaranteedDrop'] = 'potion') => {
+    const grp = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 2.25, 0.95), new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.5 }));
+    frame.position.y = 1.125; grp.add(frame);
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(0.76, 1.55, 0.99),
+      new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.55 })
+    );
+    glass.position.y = 1.15; grp.add(glass);
+    const topSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.92, 0.28),
+      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('TELEPHONE', '#eab308', '#fef08a') })
+    );
+    topSign.position.set(0, 2.08, 0.49); grp.add(topSign);
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'phone_booth', x, z, y: 0, mesh: grp, hp: 42, guaranteedDrop });
+  };
+
+  const addTrashCanProp = (x: number, z: number, guaranteedDrop: BreakablePropDef['guaranteedDrop'] = 'meat') => {
+    const grp = new THREE.Group();
+    const canTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#64748b';
+      for (let px = 4; px < 64; px += 10) ctx.fillRect(px, 6, 4, 52);
+      ctx.fillStyle = '#475569'; ctx.fillRect(0, 0, 64, 6);
+    });
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.42, 1.05, 14),
+      new THREE.MeshStandardMaterial({ map: canTex, metalness: 0.45, roughness: 0.45 })
+    );
+    body.position.y = 0.525; grp.add(body);
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.1, 14), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.5 }));
+    lid.position.y = 1.07; grp.add(lid);
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'trash_can', x, z, y: 0, mesh: grp, hp: 34, solidTop: 1.12, guaranteedDrop });
+  };
+
+  const addTireStackProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop']) => {
+    const grp = new THREE.Group();
+    for (let ti = 0; ti < 4; ti++) {
+      const tire = new THREE.Mesh(
+        new THREE.TorusGeometry(0.38, 0.14, 8, 16),
+        new THREE.MeshStandardMaterial({ color: ti % 2 === 0 ? 0x18181b : 0x27272a, roughness: 0.9 })
+      );
+      tire.rotation.x = Math.PI / 2;
+      tire.position.set((ti % 2) * 0.04, 0.14 + ti * 0.25, 0);
+      grp.add(tire);
+    }
+    grp.position.set(x, 0, z);
+    scene.add(grp);
+    refs.breakableProps.push({ id: propSeq++, kind: 'tire_stack', x, z, y: 0, mesh: grp, hp: 36, solidTop: 1.08, guaranteedDrop });
+  };
+
   if (stageId === 'stage1_streets') {
     scene.background = new THREE.Color(0x0d1b38);
     scene.fog = new THREE.FogExp2(0x0d1b38, 0.0045);
@@ -1092,131 +1225,7 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
 
     const roadTex = makeAsphaltTexture();
     const sidewalkTex = makeSidewalkTexture();
-    const crateTexShared = makeCrateTexture();
     const slumbgMat = new THREE.MeshBasicMaterial({ color: 0x1d4ed8 });
-
-    // Helpers de objetos de cenário detalhados do Stage 1
-    const addCitySkylineStrip = (startX: number, endX: number, baseZ: number) => {
-      for (let sx = startX, si = 0; sx <= endX; sx += 4.6, si++) {
-        const bh = 9 + (si % 4) * 3.5;
-        const bw = 3.8 + (si % 2) * 0.8;
-        const bMat = new THREE.MeshStandardMaterial({
-          color: si % 3 === 0 ? 0x1e3a8a : si % 3 === 1 ? 0x334155 : 0x0f274d,
-          roughness: 0.85,
-        });
-        const tower = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 2.5), bMat);
-        tower.position.set(sx, bh / 2 - 0.5, baseZ - (si % 2) * 2.2);
-        scene.add(tower);
-        const winStrip = new THREE.Mesh(
-          new THREE.PlaneGeometry(bw * 0.72, bh * 0.78),
-          new THREE.MeshBasicMaterial({ color: si % 2 === 0 ? 0x38bdf8 : 0x93c5fd, transparent: true, opacity: 0.28 })
-        );
-        winStrip.position.set(sx, bh / 2 - 0.5, baseZ - (si % 2) * 2.2 + 1.28);
-        scene.add(winStrip);
-      }
-    };
-
-    const addRustMetalBarrelProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop']) => {
-      const grp = new THREE.Group();
-      const barrelTexRust = makeCanvasTex(64, 64, (ctx) => {
-        ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, 0, 64, 64);
-        ctx.fillStyle = '#9a3412'; ctx.fillRect(4, 0, 14, 64);
-        ctx.fillStyle = '#451a03'; ctx.fillRect(0, 18, 64, 4); ctx.fillRect(0, 44, 64, 4);
-      });
-      const cyl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, 1.05, 14),
-        new THREE.MeshStandardMaterial({ map: barrelTexRust, roughness: 0.72, metalness: 0.25 })
-      );
-      cyl.position.y = 0.525; grp.add(cyl);
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.08, 14), new THREE.MeshStandardMaterial({ color: 0x334155 }));
-      rim.position.y = 1.02; grp.add(rim);
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      refs.breakableProps.push({ id: propSeq++, kind: 'barrel', x, z, y: 0, mesh: grp, hp: 35, solidTop: 1.05, guaranteedDrop });
-    };
-
-    const addWoodBarrelProp = (x: number, z: number, scaleXZ = 1.0, guaranteedDrop?: BreakablePropDef['guaranteedDrop']) => {
-      const grp = new THREE.Group();
-      const woodTex = makeCanvasTex(64, 64, (ctx) => {
-        ctx.fillStyle = '#92400e'; ctx.fillRect(0, 0, 64, 64);
-        ctx.fillStyle = '#78350f';
-        for (let px = 0; px < 64; px += 8) ctx.fillRect(px, 0, 2, 64);
-        ctx.fillStyle = '#334155'; ctx.fillRect(0, 10, 64, 6); ctx.fillRect(0, 48, 64, 6);
-      });
-      const cyl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.46 * scaleXZ, 0.42 * scaleXZ, 1.15, 12),
-        new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.8 })
-      );
-      cyl.position.y = 0.575; grp.add(cyl);
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      refs.breakableProps.push({ id: propSeq++, kind: 'wood_barrel', x, z, y: 0, mesh: grp, hp: 38, solidTop: 1.15, guaranteedDrop });
-    };
-
-    const addBigCrateProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop']) => {
-      const grp = new THREE.Group();
-      const box = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.45, 1.3), new THREE.MeshStandardMaterial({ map: crateTexShared, roughness: 0.78 }));
-      box.position.y = 0.725; grp.add(box);
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      refs.breakableProps.push({ id: propSeq++, kind: 'crate', x, z, y: 0, mesh: grp, hp: 42, solidTop: 1.45, guaranteedDrop });
-    };
-
-    const addPhoneBoothProp = (x: number, z: number) => {
-      const grp = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 2.25, 0.95), new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.5 }));
-      frame.position.y = 1.125; grp.add(frame);
-      const glass = new THREE.Mesh(
-        new THREE.BoxGeometry(0.76, 1.55, 0.99),
-        new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.55 })
-      );
-      glass.position.y = 1.15; grp.add(glass);
-      const topSign = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.92, 0.28),
-        new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('TELEPHONE', '#eab308', '#fef08a') })
-      );
-      topSign.position.set(0, 2.08, 0.49); grp.add(topSign);
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      refs.breakableProps.push({ id: propSeq++, kind: 'phone_booth', x, z, y: 0, mesh: grp, hp: 42, guaranteedDrop: 'potion' });
-    };
-
-    const addTrashCanProp = (x: number, z: number) => {
-      const grp = new THREE.Group();
-      const canTex = makeCanvasTex(64, 64, (ctx) => {
-        ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 0, 64, 64);
-        ctx.fillStyle = '#64748b';
-        for (let px = 4; px < 64; px += 10) ctx.fillRect(px, 6, 4, 52);
-        ctx.fillStyle = '#475569'; ctx.fillRect(0, 0, 64, 6);
-      });
-      const body = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.45, 0.42, 1.05, 14),
-        new THREE.MeshStandardMaterial({ map: canTex, metalness: 0.45, roughness: 0.45 })
-      );
-      body.position.y = 0.525; grp.add(body);
-      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.1, 14), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.5 }));
-      lid.position.y = 1.07; grp.add(lid);
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      // Igual no vídeo (00:18-00:26): dá pra pular em cima da lata de lixo prateada e também quebrar!
-      refs.breakableProps.push({ id: propSeq++, kind: 'trash_can', x, z, y: 0, mesh: grp, hp: 34, solidTop: 1.12, guaranteedDrop: 'meat' });
-    };
-
-    const addTireStackProp = (x: number, z: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop']) => {
-      const grp = new THREE.Group();
-      for (let ti = 0; ti < 4; ti++) {
-        const tire = new THREE.Mesh(
-          new THREE.TorusGeometry(0.38, 0.14, 8, 16),
-          new THREE.MeshStandardMaterial({ color: ti % 2 === 0 ? 0x18181b : 0x27272a, roughness: 0.9 })
-        );
-        tire.rotation.x = Math.PI / 2;
-        tire.position.set((ti % 2) * 0.04, 0.14 + ti * 0.25, 0);
-        grp.add(tire);
-      }
-      grp.position.set(x, 0, z);
-      scene.add(grp);
-      refs.breakableProps.push({ id: propSeq++, kind: 'tire_stack', x, z, y: 0, mesh: grp, hp: 36, solidTop: 1.08, guaranteedDrop });
-    };
 
     const addTrashBagsCluster = (x: number, z: number) => {
       const grp = new THREE.Group();
@@ -1503,6 +1512,7 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     }
 
     // Posição onde Dande senta/descansa na mureta SUBWAY chamando reforços & saída automática pro Metrô!
+    addWoodBarrelProp(442.5, -1.1, 1.0, 'potion', true);
     refs.bossSeatPos = { x: 465.8, y: 1.55, z: -3.5 };
     refs.stageExitWalkTo = { x: 469.5, z: -0.2, descendY: -1.5 };
 
@@ -1511,225 +1521,453 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
   }
 
   if (stageId === 'stage2_subway') {
-    scene.background = new THREE.Color(0x060a14);
-    scene.fog = new THREE.FogExp2(0x060a14, 0.008);
+    scene.background = new THREE.Color(0x070b16);
+    scene.fog = new THREE.FogExp2(0x070b16, 0.0055);
+    refs.customPropsOnly = true;
 
-    // 3 CENAS COMPLETAMENTE ISOLADAS (transição por Fade Out -> Fade In!):
-    // CENA A (x=0..84): Descida pela escada SUBWAY + longa plataforma com trem de 6 vagões parado (porta aberta SÓ no último vagão em x~79.5)
-    // CENA B (x=200..294): DENTRO dos 3 vagões do trem em movimento (totalmente separada da estação!)
-    // CENA C (x=400..520): Viela de saída do metrô -> Corredor -> Ringue Subterrâneo do Sodom
+    // 4 CENAS ISOLADAS DO ESTÁGIO 2 FIÉIS AO VÍDEO "stage 2.mp4":
+    // CENA 2A (x = 0..88): Entrada com catracas + relógio + 2º trem grafitado ao fundo + trem principal prateado com Cabine Telefônica, Lata de Lixo e último vagão aberto
+    // CENA 2B (x = 180..304): Dentro de 4 vagões em movimento (bancos azuis, alças balançando, divisórias sanfonadas, frente aberta do trem com 3 barris de madeira!)
+    // CENA 2C (x = 380..452): Galeria subterrânea de tijolos verdes iluminados + tubulações em "U" + faixa zebrada + trilhos + tambor e lata de lixo (Muramasa!)
+    // CENA 2D (x = 520..562): Passarela metálica elevada à esquerda (pulo pro ringue!) + Ringue Subterrâneo do Sodom com caveiras nos cantos, 4 postes verdes e multidão roxa!
 
     refs.floorHeightAt = (x: number) => {
-      if (x <= 1.2) return 1.45;
-      if (x > 1.2 && x < 5.2) return 1.45 * (1 - (x - 1.2) / 4);
+      // Na Cena 2D (Ringue), o jogador inicia na passarela elevada à esquerda (x = 519..523.8) e salta para o tablado!
+      if (x >= 518 && x <= 523.8) return 1.65;
       return 0;
     };
 
-    // ---- CENA A: ESCADA SUBWAY + PLATAFORMA EXTERNA LONGA (x=-6..96) ----
-    const stairsWall = new THREE.Mesh(
-      new THREE.BoxGeometry(8, 3.6, 0.5),
-      new THREE.MeshStandardMaterial({ map: makeBrickTexture('#334155', '#1e293b') })
-    );
-    stairsWall.position.set(1.2, 1.8, -3.6); scene.add(stairsWall);
-    const subwayPillar = new THREE.Mesh(new THREE.BoxGeometry(0.65, 4.2, 0.65), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
-    subwayPillar.position.set(5.4, 2.1, -2.9); scene.add(subwayPillar);
-    const subwaySign = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.8, 0.7),
-      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('SUBWAY ▼', '#38bdf8', '#f8fafc') })
-    );
-    subwaySign.position.set(1.6, 3.1, -3.3); scene.add(subwaySign);
-    for (let st = 0; st < 6; st++) {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.28, 7.2), new THREE.MeshStandardMaterial({ color: 0x64748b }));
-      step.position.set(1.2 + st * 0.7, 1.32 - st * 0.24, 0.4); scene.add(step);
-    }
+    // =========================================================================
+    // CENA 2A (x = -6 .. 92): PLATAFORMA DA ESTAÇÃO DO METRÔ (sheet_01..sheet_02)
+    // =========================================================================
+    const stationTileTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#7c8ba1'; ctx.fillRect(0, 0, 64, 64);
+      ctx.strokeStyle = '#5b687d'; ctx.lineWidth = 2;
+      for (let gx = 0; gx < 64; gx += 16) ctx.strokeRect(gx, 0, 16, 64);
+      for (let gy = 0; gy < 64; gy += 16) ctx.strokeRect(0, gy, 64, 16);
+    }, 36, 4);
 
-    const platFloor = new THREE.Mesh(new THREE.PlaneGeometry(102, 7.6), new THREE.MeshStandardMaterial({ map: makeSidewalkTexture() }));
-    platFloor.rotation.x = -Math.PI / 2; platFloor.position.set(45, 0, 0.4); scene.add(platFloor);
-    const platFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(108, 6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
-    platFrontDark.rotation.x = -Math.PI / 2; platFrontDark.position.set(45, 0.01, 6.8); scene.add(platFrontDark);
-    const yellowEdge = new THREE.Mesh(new THREE.BoxGeometry(98, 0.03, 0.28), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
-    yellowEdge.position.set(47, 0.02, -2.55); scene.add(yellowEdge);
+    const platFloor = new THREE.Mesh(new THREE.PlaneGeometry(104, 8.2), new THREE.MeshStandardMaterial({ map: stationTileTex, roughness: 0.7 }));
+    platFloor.rotation.x = -Math.PI / 2; platFloor.position.set(44, 0, 0.5); scene.add(platFloor);
+    const platCurb = new THREE.Mesh(new THREE.BoxGeometry(102, 0.12, 0.36), new THREE.MeshStandardMaterial({ color: 0xcbd5e1 }));
+    platCurb.position.set(44, 0.04, -3.15); scene.add(platCurb);
+    const yellowLine = new THREE.Mesh(new THREE.BoxGeometry(100, 0.03, 0.22), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+    yellowLine.position.set(44, 0.02, -2.75); scene.add(yellowLine);
+    const platFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(108, 6), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
+    platFrontDark.rotation.x = -Math.PI / 2; platFrontDark.position.set(44, 0.01, 7.2); scene.add(platFrontDark);
 
-    const trackBg = new THREE.Mesh(new THREE.PlaneGeometry(106, 6.5), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
-    trackBg.rotation.x = -Math.PI / 2; trackBg.position.set(46, -0.5, -6.2); scene.add(trackBg);
-    const stationBackWall = new THREE.Mesh(
-      new THREE.BoxGeometry(108, 6.5, 0.8),
-      new THREE.MeshStandardMaterial({ map: makeBrickTexture('#1e293b', '#0f172a') })
+    // Parede esquerda de entrada da estação + Catracas prateadas em primeiro plano (sheet_01 frame 1!)
+    const entryBlockWall = new THREE.Mesh(
+      new THREE.BoxGeometry(7.2, 6.2, 4.8),
+      new THREE.MeshStandardMaterial({ map: makeBrickTexture('#52605c', '#2c3532') })
     );
-    stationBackWall.position.set(46, 3.0, -7.2); scene.add(stationBackWall);
-    const endTunnelBlock = new THREE.Mesh(new THREE.BoxGeometry(12, 6.5, 9), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
-    endTunnelBlock.position.set(90, 3.0, -1.5); scene.add(endTunnelBlock);
-
-    // 1) Locomotiva dianteira (x=11.5) + Faróis
-    const locoBody = new THREE.Mesh(new THREE.BoxGeometry(10.2, 3.65, 2.3), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.5, roughness: 0.35 }));
-    locoBody.position.set(11.5, 1.88, -4.4); scene.add(locoBody);
-    const locoNose = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.6, 2.2), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.55 }));
-    locoNose.position.set(6.2, 1.35, -4.4); scene.add(locoNose);
-    const windshield = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.1), new THREE.MeshBasicMaterial({ color: 0x020617 }));
-    windshield.position.set(7.4, 2.45, -3.22); scene.add(windshield);
-    [-0.5, 0.5].forEach(hz => {
-      const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, 0.35), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
-      headlight.position.set(5.48, 1.0, -4.4 + hz); scene.add(headlight);
+    entryBlockWall.position.set(-2.2, 3.1, -3.6); scene.add(entryBlockWall);
+    [-1.4, 0.1, 1.6].forEach((tz) => {
+      const gate = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.05, 0.36), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.65, roughness: 0.3 }));
+      gate.position.set(0.45, 0.52, tz); scene.add(gate);
+      const gateTop = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.14, 0.4), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.7 }));
+      gateTop.position.set(0.45, 1.08, tz); scene.add(gateTop);
     });
-    const locoStripe = new THREE.Mesh(new THREE.BoxGeometry(10.3, 0.36, 2.34), new THREE.MeshBasicMaterial({ color: 0x2563eb }));
-    locoStripe.position.set(11.5, 1.15, -4.4); scene.add(locoStripe);
 
-    // 2) 6 Vagões ao longo da plataforma (portas fechadas nos vagões 2..5; ABERTA SÓ no último vagão em x~79.5!)
-    [22.5, 33.5, 44.5, 55.5, 66.5, 76.5].forEach((cx, ci) => {
+    // Vão aberto inicial (x = 0..22): trilhos escuros, plataforma oposta com bancos laranjas, relógio redondo e 2º trem grafitado ao fundo!
+    const railPit = new THREE.Mesh(new THREE.PlaneGeometry(104, 7.5), new THREE.MeshStandardMaterial({ color: 0x0b0f19 }));
+    railPit.rotation.x = -Math.PI / 2; railPit.position.set(44, -0.65, -6.5); scene.add(railPit);
+    const farPlatform = new THREE.Mesh(new THREE.BoxGeometry(40, 0.85, 2.6), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+    farPlatform.position.set(14, -0.1, -6.8); scene.add(farPlatform);
+    const farBackWall = new THREE.Mesh(new THREE.BoxGeometry(106, 7.2, 0.8), new THREE.MeshStandardMaterial({ map: makeBrickTexture('#3b2f4a', '#1f1729') }));
+    farBackWall.position.set(44, 3.2, -9.8); scene.add(farBackWall);
+
+    // 2º Trem cinza estacionado nos trilhos de fundo com grafites roxos (sheet_01 frames 2-3!)
+    const bgTrain = new THREE.Group();
+    const bgCar = new THREE.Mesh(new THREE.BoxGeometry(18, 2.85, 1.6), new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.35, roughness: 0.55 }));
+    bgCar.position.set(9.5, 1.5, -8.1); bgTrain.add(bgCar);
+    for (let bwx = 2.5; bwx <= 16.5; bwx += 2.6) {
+      const bwin = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.95), new THREE.MeshBasicMaterial({ color: 0x1e293b }));
+      bwin.position.set(bwx, 1.85, -7.28); bgTrain.add(bwin);
+      const graf = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 0.55), new THREE.MeshBasicMaterial({ color: bwx % 5 < 2 ? 0x9333ea : 0xdb2777, transparent: true, opacity: 0.65 }));
+      graf.position.set(bwx, 0.75, -7.27); bgTrain.add(graf);
+    }
+    scene.add(bgTrain);
+
+    // Bancos laranjas na plataforma oposta + pilares azuis + Relógio branco redondo da estação (sheet_01 frame 3!)
+    [13.5, 19.5].forEach((bx) => {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.48, 0.55), new THREE.MeshStandardMaterial({ color: 0xea580c }));
+      bench.position.set(bx, 0.55, -6.2); scene.add(bench);
+    });
+    [10.2, 16.8].forEach((px) => {
+      const pil = new THREE.Mesh(new THREE.BoxGeometry(0.65, 5.8, 0.65), new THREE.MeshStandardMaterial({ color: 0x1e3a8a, metalness: 0.4 }));
+      pil.position.set(px, 2.9, -4.6); scene.add(pil);
+    });
+    const clockFaceTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#f8fafc'; ctx.beginPath(); ctx.arc(32, 32, 27, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(32, 32); ctx.lineTo(32, 14); ctx.moveTo(32, 32); ctx.lineTo(45, 34); ctx.stroke();
+    });
+    const stationClock = new THREE.Mesh(new THREE.CircleGeometry(0.62, 20), new THREE.MeshBasicMaterial({ map: clockFaceTex }));
+    stationClock.position.set(19.6, 4.15, -5.2); scene.add(stationClock);
+
+    // TREM PRINCIPAL PRATEADO/AZULADO PARADO NA PLATAFORMA (x = 20 .. 87, sheet_01 frames 4-12 & sheet_02 frames 1-6!)
+    const trainCarTex = makeCanvasTex(128, 128, (ctx) => {
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = '#94a3b8';
+      for (let ry = 82; ry < 126; ry += 6) ctx.fillRect(0, ry, 128, 2);
+      ctx.fillStyle = '#4c1d95'; ctx.fillRect(0, 10, 128, 12);
+      ctx.fillStyle = '#64748b'; ctx.fillRect(0, 0, 128, 8);
+    });
+    const brokenSubwayWinTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, 64, 64);
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4; ctx.strokeRect(2, 2, 60, 60);
+      // Cartaz branco "SOU" / estilhaços como no vídeo!
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(16, 12, 32, 40);
+      ctx.fillStyle = '#1e293b'; ctx.font = 'bold 11px monospace'; ctx.fillText('METRO', 18, 30);
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(6, 56); ctx.lineTo(24, 34); ctx.lineTo(48, 54); ctx.stroke();
+    });
+
+    [26.5, 38.5, 50.5, 62.5, 74.5, 84.5].forEach((cx, ci) => {
       const isLastCar = ci === 5;
+      const carW = isLastCar ? 9.2 : 11.6;
       const carBody = new THREE.Mesh(
-        new THREE.BoxGeometry(10.6, 3.65, 2.3),
-        new THREE.MeshStandardMaterial({ color: isLastCar ? 0x64748b : 0x475569, metalness: 0.45, roughness: 0.4 })
+        new THREE.BoxGeometry(carW, 3.85, 2.35),
+        new THREE.MeshStandardMaterial({ map: trainCarTex, metalness: 0.42, roughness: 0.38 })
       );
-      carBody.position.set(cx, 1.88, -4.4); scene.add(carBody);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(10.64, 0.36, 2.34), new THREE.MeshBasicMaterial({ color: 0x2563eb }));
-      stripe.position.set(cx, 1.15, -4.4); scene.add(stripe);
+      carBody.position.set(cx, 1.95, -4.45); scene.add(carBody);
+      const roofArch = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.16, 1.16, carW, 12, 1, false, 0, Math.PI),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.45 })
+      );
+      roofArch.rotation.z = Math.PI / 2;
+      roofArch.scale.set(0.32, 1, 1);
+      roofArch.position.set(cx, 3.86, -4.45); scene.add(roofArch);
 
-      [-3.2, 0.0, 3.5].forEach((ox, wi) => {
-        const isDoorOpenHere = isLastCar && wi === 2;
-        const winOrDoor = new THREE.Mesh(
-          new THREE.PlaneGeometry(isDoorOpenHere ? 2.1 : 2.2, isDoorOpenHere ? 2.65 : 1.15),
-          new THREE.MeshBasicMaterial({ color: isDoorOpenHere ? 0x38bdf8 : 0x090d16 })
+      if (!isLastCar) {
+        // Porta dupla marrom-avermelhada fechada no centro + 2 janelas com cartazes nas laterais!
+        [-0.58, 0.58].forEach((dx) => {
+          const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.08, 2.72, 0.08), new THREE.MeshStandardMaterial({ color: 0x6b3e46, roughness: 0.55 }));
+          leaf.position.set(cx + dx, 1.42, -3.25); scene.add(leaf);
+          const dWin = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.95), new THREE.MeshBasicMaterial({ color: 0x1e293b }));
+          dWin.position.set(cx + dx, 2.12, -3.2); scene.add(dWin);
+        });
+        [-3.6, 3.6].forEach((wx) => {
+          const winM = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.45), new THREE.MeshBasicMaterial({ map: brokenSubwayWinTex }));
+          winM.position.set(cx + wx, 2.22, -3.24); scene.add(winM);
+        });
+      } else {
+        // ÚLTIMO VAGÃO COM A PORTA ABERTA PARA EMBARCAR!
+        const winLeft = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.45), new THREE.MeshBasicMaterial({ map: brokenSubwayWinTex }));
+        winLeft.position.set(cx - 2.6, 2.22, -3.24); scene.add(winLeft);
+        const openVoid = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.85), new THREE.MeshBasicMaterial({ color: 0x020617 }));
+        openVoid.position.set(cx + 0.8, 1.45, -3.23); scene.add(openVoid);
+        const glowFrame = new THREE.Mesh(new THREE.BoxGeometry(2.65, 2.95, 0.1), new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true }));
+        glowFrame.position.set(cx + 0.8, 1.48, -3.2); scene.add(glowFrame);
+        const enterSign = new THREE.Mesh(
+          new THREE.PlaneGeometry(3.8, 0.76),
+          new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('ENTRAR NO TREM ➔', '#22d3ee', '#fef08a') })
         );
-        winOrDoor.position.set(cx + ox, isDoorOpenHere ? 1.38 : 2.38, -3.22);
-        scene.add(winOrDoor);
-        if (isDoorOpenHere) {
-          const innerDark = new THREE.Mesh(new THREE.PlaneGeometry(1.65, 2.4), new THREE.MeshBasicMaterial({ color: 0x020617 }));
-          innerDark.position.set(cx + ox, 1.32, -3.2);
-          scene.add(innerDark);
-          const portalSign = new THREE.Mesh(
-            new THREE.PlaneGeometry(3.6, 0.78),
-            new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('ENTRAR NO TREM ➔', '#22d3ee', '#fef08a') })
-          );
-          portalSign.position.set(cx + ox, 3.35, -3.16); scene.add(portalSign);
-        }
-      });
-    });
-
-    for (let px = 8; px <= 82; px += 12) {
-      const col = new THREE.Mesh(new THREE.BoxGeometry(0.45, 4.4, 0.45), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-      col.position.set(px, 2.2, -3.0); scene.add(col);
-      const stSign = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 0.65), new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('METRO STATION', '#3b82f6', '#dbeafe') }));
-      stSign.position.set(px + 2, 4.2, -6.65); scene.add(stSign);
-    }
-    [18, 42, 68].forEach(cx => addTrafficCone(cx, 0, -1.7));
-    [28, 58].forEach(bx => addFireBarrel(bx, 0, 1.75));
-
-    // ---- CENA B: DENTRO DE 3 VAGÕES EM MOVIMENTO (x=200..294, isolada!) ----
-    const trainCabinGroup = new THREE.Group();
-    const trainFloor = new THREE.Mesh(new THREE.PlaneGeometry(102, 6.8), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.4, roughness: 0.55 }));
-    trainFloor.rotation.x = -Math.PI / 2; trainFloor.position.set(247, 0, 0.4); trainCabinGroup.add(trainFloor);
-    const trainFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(106, 6), new THREE.MeshStandardMaterial({ color: 0x020617 }));
-    trainFrontDark.rotation.x = -Math.PI / 2; trainFrontDark.position.set(247, 0.01, 6.8); trainCabinGroup.add(trainFrontDark);
-    [197.5, 297.5].forEach(wx => {
-      const endWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.6, 8.2), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-      endWall.position.set(wx, 2.3, 0.2); trainCabinGroup.add(endWall);
-    });
-
-    const straps: THREE.Mesh[] = [];
-    for (let x = 200, idx = 0; x <= 294; x += 4.5, idx++) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(4.4, 4.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x475569 }));
-      wall.position.set(x, 2.1, -3.1); trainCabinGroup.add(wall);
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.55), new THREE.MeshBasicMaterial({ color: 0x020617 }));
-      win.position.set(x, 2.45, -2.93); trainCabinGroup.add(win);
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.55, 0.85), new THREE.MeshStandardMaterial({ color: 0x1d4ed8 }));
-      seat.position.set(x, 0.35, -2.55); trainCabinGroup.add(seat);
-
-      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.65, 0.14), new THREE.MeshBasicMaterial({ color: 0xe2e8f0 }));
-      strap.position.set(x - 0.8, 3.45, -1.6); trainCabinGroup.add(strap);
-      straps.push(strap);
-
-      if (idx === 6 || idx === 13) {
-        const carDiv = new THREE.Mesh(new THREE.BoxGeometry(0.4, 3.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-        carDiv.position.set(x + 2.2, 1.9, -2.7); trainCabinGroup.add(carDiv);
+        enterSign.position.set(cx + 0.8, 3.38, -3.16); scene.add(enterSign);
       }
+    });
+
+    const endStationWall = new THREE.Mesh(new THREE.BoxGeometry(8, 6.5, 9), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
+    endStationWall.position.set(91.5, 3.0, -1.2); scene.add(endStationWall);
+
+    // Quebráveis da Plataforma (fiéis ao vídeo + suporte de vida equilibrado!):
+    addPhoneBoothProp(23.8, 0.85, 'sword');       // TELEPHONE amarelo logo no começo do trem! (sheet_01 frames 4-5)
+    addRustMetalBarrelProp(42.5, -1.35, 'potion'); // Cura no meio da plataforma
+    addTrashCanProp(55.5, 0.65, 'meat');          // DUSTBIN prateada com hambúrguer/carne! (sheet_01 frames 10-11)
+    addWoodBarrelProp(70.2, -1.2, 1.0, 'potion', true); // Cura antes do Andore Jr. na porta do trem!
+
+    // =========================================================================
+    // CENA 2B (x = 176 .. 308): DENTRO DOS 4 VAGÕES EM MOVIMENTO + FRENTE ABERTA!
+    // =========================================================================
+    const trainCabinGroup = new THREE.Group();
+    const carFloorMat = new THREE.MeshStandardMaterial({ color: 0x4a3b39, roughness: 0.72 });
+    const trainFloor = new THREE.Mesh(new THREE.PlaneGeometry(132, 7.2), carFloorMat);
+    trainFloor.rotation.x = -Math.PI / 2; trainFloor.position.set(242, 0, 0.4); trainCabinGroup.add(trainFloor);
+    const trainFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(136, 6), new THREE.MeshStandardMaterial({ color: 0x020617 }));
+    trainFrontDark.rotation.x = -Math.PI / 2; trainFrontDark.position.set(242, 0.01, 7.0); trainCabinGroup.add(trainFrontDark);
+
+    const interiorWallTex = makeCanvasTex(128, 128, (ctx) => {
+      ctx.fillStyle = '#9aa899'; ctx.fillRect(0, 0, 128, 72);
+      ctx.fillStyle = '#5c4d5d'; ctx.fillRect(0, 72, 128, 56);
+      // Grafites rabiscados na metade inferior como no vídeo (sheet_02..sheet_05)
+      ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(8, 110); ctx.lineTo(28, 82); ctx.lineTo(44, 114); ctx.lineTo(66, 86); ctx.stroke();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.beginPath(); ctx.moveTo(74, 112); ctx.lineTo(95, 84); ctx.lineTo(118, 108); ctx.stroke();
+    });
+    const shatteredDarkWinTex = makeCanvasTex(64, 64, (ctx) => {
+      ctx.fillStyle = '#050816'; ctx.fillRect(0, 0, 64, 64);
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4; ctx.strokeRect(2, 2, 60, 60);
+      // Pontas de vidro quebrado na borda inferior!
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(4, 60); ctx.lineTo(14, 42); ctx.lineTo(24, 58); ctx.lineTo(36, 38); ctx.lineTo(49, 57); ctx.lineTo(60, 44);
+      ctx.stroke();
+    });
+
+    const rearTrainWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.6, 8.2), new THREE.MeshStandardMaterial({ color: 0x0f4c5c }));
+    rearTrainWall.position.set(177.5, 2.3, 0.2); trainCabinGroup.add(rearTrainWall);
+
+    const straps: THREE.Group[] = [];
+    for (let x = 182; x <= 286; x += 5.2) {
+      const isCarJoint = Math.abs(x - 208) < 2.5 || Math.abs(x - 239) < 2.5 || Math.abs(x - 270) < 2.5;
+      if (isCarJoint) {
+        // Divisória azul-petróleo entre vagões + passadeira metálica no chão + grade sanfonada ("X")! (sheet_03 frames 4-11)
+        const stripFloor = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 7.1), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
+        stripFloor.rotation.x = -Math.PI / 2; stripFloor.position.set(x, 0.02, 0.4); trainCabinGroup.add(stripFloor);
+        const bulkheadBack = new THREE.Mesh(new THREE.BoxGeometry(0.45, 4.3, 1.8), new THREE.MeshStandardMaterial({ color: 0x155e75 }));
+        bulkheadBack.position.set(x, 2.15, -2.55); trainCabinGroup.add(bulkheadBack);
+        const pantograph = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.1, 2.5, 3, 6),
+          new THREE.MeshBasicMaterial({ color: 0xcbd5e1, wireframe: true })
+        );
+        pantograph.position.set(x, 1.3, -3.05); trainCabinGroup.add(pantograph);
+        continue;
+      }
+
+      const wallSeg = new THREE.Mesh(new THREE.BoxGeometry(5.05, 4.25, 0.28), new THREE.MeshStandardMaterial({ map: interiorWallTex }));
+      wallSeg.position.set(x, 2.12, -3.15); trainCabinGroup.add(wallSeg);
+
+      const isDoorSlot = Math.round(x) % 10 === 0;
+      if (isDoorSlot) {
+        [-0.55, 0.55].forEach((dx) => {
+          const dLeaf = new THREE.Mesh(new THREE.BoxGeometry(1.02, 2.85, 0.08), new THREE.MeshStandardMaterial({ color: 0x6b4c57 }));
+          dLeaf.position.set(x + dx, 1.45, -2.98); trainCabinGroup.add(dLeaf);
+          const dWin = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.0), new THREE.MeshBasicMaterial({ map: shatteredDarkWinTex }));
+          dWin.position.set(x + dx, 2.18, -2.92); trainCabinGroup.add(dWin);
+        });
+      } else {
+        const win = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 1.6), new THREE.MeshBasicMaterial({ map: shatteredDarkWinTex, transparent: true, opacity: 0.88 }));
+        win.position.set(x, 2.42, -2.98); trainCabinGroup.add(win);
+        // Banco estofado azul-turquesa com apoios cromados nas pontas! (sheet_02..sheet_05)
+        const seatBase = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.46, 0.92), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.45 }));
+        seatBase.position.set(x, 0.34, -2.48); trainCabinGroup.add(seatBase);
+        const seatBack = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.62, 0.22), new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.45 }));
+        seatBack.position.set(x, 0.82, -2.86); trainCabinGroup.add(seatBack);
+        [-1.92, 1.92].forEach((ax) => {
+          const armRail = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 6, 12, Math.PI), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 }));
+          armRail.rotation.y = Math.PI / 2;
+          armRail.position.set(x + ax, 0.58, -2.48); trainCabinGroup.add(armRail);
+        });
+      }
+
+      // Alças brancas duplas penduradas no trilho superior!
+      [-1.1, 1.1].forEach((sx) => {
+        const strapGrp = new THREE.Group();
+        const cord = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.48, 0.06), new THREE.MeshBasicMaterial({ color: 0xcbd5e1 }));
+        cord.position.y = -0.24; strapGrp.add(cord);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 10), new THREE.MeshBasicMaterial({ color: 0xf8fafc }));
+        ring.position.y = -0.55; strapGrp.add(ring);
+        strapGrp.position.set(x + sx, 3.82, -1.75);
+        trainCabinGroup.add(strapGrp);
+        straps.push(strapGrp);
+      });
     }
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(102, 0.25, 2.4), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-    roof.position.set(247, 4.15, -2.1); trainCabinGroup.add(roof);
-    const exitDoorTrain = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.7), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
-    exitDoorTrain.position.set(291.5, 1.4, -2.88); trainCabinGroup.add(exitDoorTrain);
-    const exitSignTrain = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.3, 0.72),
-      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('SAÍDA DO TREM ➔', '#22d3ee', '#fef08a') })
-    );
-    exitSignTrain.position.set(291.5, 3.25, -2.85); trainCabinGroup.add(exitSignTrain);
+
+    // CABINE DIANTEIRA RASGADA / ABERTA NA PONTA DO TREM (x = 289 .. 304, sheet_05 frames 9-12 & sheet_06 frames 1-6!)
+    const frontCabWall = new THREE.Mesh(new THREE.BoxGeometry(14, 4.3, 0.35), new THREE.MeshStandardMaterial({ color: 0x0e7490, metalness: 0.35 }));
+    frontCabWall.position.set(295.5, 2.15, -3.12); trainCabinGroup.add(frontCabWall);
+    const controlBox = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.25, 0.9), new THREE.MeshStandardMaterial({ color: 0x155e75 }));
+    controlBox.position.set(294.5, 0.62, -2.55); trainCabinGroup.add(controlBox);
+    const tornFrontEdge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 4.3, 2.6), new THREE.MeshStandardMaterial({ color: 0x0891b2 }));
+    tornFrontEdge.position.set(302.5, 2.15, -1.9); trainCabinGroup.add(tornFrontEdge);
+
+    const overheadBar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 122, 8), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 }));
+    overheadBar.rotation.z = Math.PI / 2; overheadBar.position.set(240, 3.84, -1.75); trainCabinGroup.add(overheadBar);
+    const trainRoof = new THREE.Mesh(new THREE.BoxGeometry(126, 0.25, 2.6), new THREE.MeshStandardMaterial({ color: 0x14532d }));
+    trainRoof.position.set(240, 4.2, -2.1); trainCabinGroup.add(trainRoof);
     scene.add(trainCabinGroup);
 
+    // Barris de madeira dentro do trem (exatamente como em sheet_04 frame 3 e sheet_05 frames 10-12!)
+    addWoodBarrelProp(236.5, -0.4, 1.0, 'potion');        // Barril na junção do Vagão 2->3 (cura estilo Soft Drink!)
+    addWoodBarrelProp(295.2, 0.95, 1.0, 'pipe');          // Trio de barris na ponta aberta do trem: Cano + Katana + Cura!
+    addWoodBarrelProp(296.8, -0.15, 1.0, 'meat', true);
+    addWoodBarrelProp(298.1, 0.85, 1.0, 'sword');
+
+    // Luzes azuis/brancas e vigas do túnel passando rápido pelas janelas quebradas e pela frente aberta!
     const lightsGroup = new THREE.Group();
-    for (let lx = 192; lx < 308; lx += 5.5) {
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.32, 0.2), new THREE.MeshBasicMaterial({ color: lx % 11 === 0 ? 0xfacc15 : 0x38bdf8 }));
-      tl.position.set(lx, 2.5, -4.6); lightsGroup.add(tl);
-      const tunnelPost = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4.5, 0.3), new THREE.MeshBasicMaterial({ color: 0x1e293b }));
-      tunnelPost.position.set(lx + 2.7, 2.0, -4.8); lightsGroup.add(tunnelPost);
+    for (let lx = 172; lx < 316; lx += 5.2) {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.24, 0.18), new THREE.MeshBasicMaterial({ color: lx % 10 < 5 ? 0x60a5fa : 0xe0f2fe }));
+      tl.position.set(lx, 2.65, -4.6); lightsGroup.add(tl);
+      const tunnelPost = new THREE.Mesh(new THREE.BoxGeometry(0.32, 4.8, 0.32), new THREE.MeshBasicMaterial({ color: 0x1e1b4b }));
+      tunnelPost.position.set(lx + 2.5, 2.1, -4.8); lightsGroup.add(tunnelPost);
     }
     scene.add(lightsGroup);
 
     animCallbacks.push((t, dt) => {
-      trainCabinGroup.position.y = Math.sin(t * 14) * 0.025;
-      straps.forEach((st, i) => { st.rotation.z = Math.sin(t * 7 + i * 0.8) * 0.22; });
+      trainCabinGroup.position.y = Math.sin(t * 15) * 0.025;
+      straps.forEach((st, i) => { st.rotation.z = Math.sin(t * 7.2 + i * 0.7) * 0.24; });
       lightsGroup.children.forEach((c: any) => {
-        c.position.x -= 28 * dt;
-        if (c.position.x < 190) c.position.x = 308;
+        c.position.x -= 30 * dt;
+        if (c.position.x < 172) c.position.x = 316;
       });
     });
 
-    // ---- CENA C: VIELA + CORREDOR + RINGUE SUBTERRÂNEO DO SODOM (x=400..520) ----
-    const alleyFloor = new THREE.Mesh(new THREE.PlaneGeometry(76, 7.6), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture() }));
-    alleyFloor.rotation.x = -Math.PI / 2; alleyFloor.position.set(434, 0, 0.4); scene.add(alleyFloor);
-    for (let x = 398; x < 468; x += 6) {
-      const bldg = new THREE.Mesh(new THREE.BoxGeometry(5.6, 7.2, 3.2), new THREE.MeshStandardMaterial({ map: makeBrickTexture('#334155', '#1e293b') }));
-      bldg.position.set(x, 3.6, -7.8); scene.add(bldg);
+    // =========================================================================
+    // CENA 2C (x = 376 .. 456): GALERIA SUBTERRÂNEA DE TIJOLOS VERDES & TRILHOS (sheet_06..sheet_07)
+    // =========================================================================
+    const galleryTrackTex = makeCanvasTex(128, 128, (ctx) => {
+      // Faixa zebrada amarela/marrom no topo + brita e dormentes de trilho embaixo!
+      ctx.fillStyle = '#5c4d3c'; ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = '#eab308';
+      for (let zx = -32; zx < 160; zx += 24) {
+        ctx.beginPath();
+        ctx.moveTo(zx, 0); ctx.lineTo(zx + 12, 0); ctx.lineTo(zx + 28, 26); ctx.lineTo(zx + 16, 26);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, 26, 128, 4); ctx.fillRect(0, 56, 128, 5); ctx.fillRect(0, 108, 128, 5);
+      ctx.fillStyle = '#3f2e21';
+      for (let sx = 6; sx < 128; sx += 22) ctx.fillRect(sx, 50, 10, 68);
+    }, 18, 1);
+
+    const galFloor = new THREE.Mesh(new THREE.PlaneGeometry(84, 7.8), new THREE.MeshStandardMaterial({ map: galleryTrackTex, roughness: 0.85 }));
+    galFloor.rotation.x = -Math.PI / 2; galFloor.position.set(416, 0, 0.5); scene.add(galFloor);
+    const galFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(88, 6), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
+    galFrontDark.rotation.x = -Math.PI / 2; galFrontDark.position.set(416, 0.01, 7.1); scene.add(galFrontDark);
+
+    // Parede de tijolos verdes subterrâneos + feixes de luz esverdeados + tubulações industriais em "U"!
+    const greenBrickWall = new THREE.Mesh(
+      new THREE.BoxGeometry(82, 7.4, 0.8),
+      new THREE.MeshStandardMaterial({ map: makeBrickTexture('#2f5e4e', '#173329'), roughness: 0.8 })
+    );
+    greenBrickWall.position.set(417, 3.7, -3.65); scene.add(greenBrickWall);
+
+    // Parede azul quebrada/arrebentada à esquerda de onde o jogador saiu dos trilhos! (sheet_06 frame 7)
+    const brokenTunnelOpening = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.8), new THREE.MeshBasicMaterial({ color: 0x0c1938 }));
+    brokenTunnelOpening.position.set(380.2, 2.9, -3.18); scene.add(brokenTunnelOpening);
+    for (let j = 0; j < 7; j++) {
+      const shard = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.85, 0.35), new THREE.MeshStandardMaterial({ color: 0xcbd5e1 }));
+      shard.position.set(382.6 + (j % 2) * 0.35, 0.5 + j * 0.82, -3.12);
+      shard.rotation.z = 0.4;
+      scene.add(shard);
     }
-    [410, 442, 464].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.75));
-    [426, 456].forEach(cx => addTrafficCone(cx, 0, -1.65));
-    addSteamVent(422, 0, -2.5);
-    addSteamVent(452, 0, -2.5);
 
-    const ringFloor = new THREE.Mesh(new THREE.PlaneGeometry(58, 7.8), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 }));
-    ringFloor.rotation.x = -Math.PI / 2; ringFloor.position.set(498, 0, 0.4); scene.add(ringFloor);
-    const ringMat = new THREE.Mesh(new THREE.PlaneGeometry(34, 5.4), new THREE.MeshStandardMaterial({ color: 0xd6d3d1, roughness: 0.65 }));
-    ringMat.rotation.x = -Math.PI / 2; ringMat.position.set(497, 0.02, 0.2); scene.add(ringMat);
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x86efac, metalness: 0.55, roughness: 0.35 });
+    for (let gx = 388; gx <= 446; gx += 12) {
+      // Luminária superior esverdeada
+      const glowCone = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 3.2),
+        new THREE.MeshBasicMaterial({ color: 0xbbf7d0, transparent: true, opacity: 0.22 })
+      );
+      glowCone.position.set(gx, 5.2, -3.2); scene.add(glowCone);
+      // Tubulação industrial em "U" na parede (sheet_06..sheet_07!)
+      const pHorizL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 4.2, 8), pipeMat);
+      pHorizL.rotation.z = Math.PI / 2; pHorizL.position.set(gx - 3.6, 1.35, -3.15); scene.add(pHorizL);
+      const pVertL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.6, 8), pipeMat);
+      pVertL.position.set(gx - 1.5, 2.15, -3.15); scene.add(pVertL);
+      const pTop = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 3.0, 8), pipeMat);
+      pTop.rotation.z = Math.PI / 2; pTop.position.set(gx, 2.95, -3.15); scene.add(pTop);
+      const pVertR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.6, 8), pipeMat);
+      pVertR.position.set(gx + 1.5, 2.15, -3.15); scene.add(pVertR);
+      const pHorizR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 4.8, 8), pipeMat);
+      pHorizR.rotation.z = Math.PI / 2; pHorizR.position.set(gx + 3.9, 1.35, -3.15); scene.add(pHorizR);
+    }
 
-    [0.85, 1.35, 1.85].forEach(ry => {
-      const rope = new THREE.Mesh(new THREE.BoxGeometry(34, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
-      rope.position.set(497, ry, -2.45); scene.add(rope);
+    const ringGateSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.8, 0.78),
+      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('ARENA DO SODOM ➔', '#22c55e', '#fef08a') })
+    );
+    ringGateSign.position.set(447.5, 3.6, -3.12); scene.add(ringGateSign);
+
+    // Quebráveis da Galeria Subterrânea (sheet_06 frames 9-11: Tambor enferrujado + Lata de Lixo DUSTBIN com MURAMASA + Barril pré-chefe!)
+    addRustMetalBarrelProp(395.5, 1.45, 'potion');
+    addTrashCanProp(414.0, -1.25, 'sword'); // Lata de lixo dropando Katana MURAMASA!
+    addWoodBarrelProp(434.5, 0.35, 1.0, 'meat', true); // Cura garantida logo antes do Ringue do Sodom!
+
+    // =========================================================================
+    // CENA 2D (x = 518 .. 564): PASSARELA ELEVADA + RINGUE SUBTERRÂNEO DO SODOM (sheet_07..sheet_08)
+    // =========================================================================
+    const arenaVoid = new THREE.Mesh(new THREE.PlaneGeometry(60, 12), new THREE.MeshStandardMaterial({ color: 0x07040d }));
+    arenaVoid.rotation.x = -Math.PI / 2; arenaVoid.position.set(542, -0.35, 0.4); scene.add(arenaVoid);
+
+    // Passarela metálica elevada no canto superior esquerdo de onde o jogador salta pro ringue! (sheet_07 frame 6)
+    const catwalkPlat = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.32, 3.4), new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.6 }));
+    catwalkPlat.position.set(521.0, 1.5, -1.1); scene.add(catwalkPlat);
+    const catwalkRail = new THREE.Mesh(new THREE.BoxGeometry(5.6, 1.05, 0.1), new THREE.MeshStandardMaterial({ color: 0x94a3b8, wireframe: true }));
+    catwalkRail.position.set(521.0, 2.15, -2.65); scene.add(catwalkRail);
+
+    // Tablado do Ringue do Sodom com emblemas brancos nos cantos + saia lateral bordô!
+    const sodomMatTex = makeCanvasTex(128, 128, (ctx) => {
+      ctx.fillStyle = '#9ca38f'; ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = '#6b7260'; ctx.lineWidth = 4; ctx.strokeRect(4, 4, 120, 120);
+      // Emblemas brancos estilizados nos 4 cantos do tablado (igual sheet_07 frames 7-8!)
+      ctx.fillStyle = '#e5e7eb';
+      [[18, 22], [110, 22], [18, 106], [110, 106]].forEach(([cx, cy]) => {
+        ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#57534e';
+        ctx.fillRect(cx - 5, cy - 3, 3, 3); ctx.fillRect(cx + 2, cy - 3, 3, 3);
+        ctx.fillStyle = '#e5e7eb';
+      });
     });
-    [480.5, 513.5].forEach(px => {
-      const cornerPost = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 2.25, 10), new THREE.MeshStandardMaterial({ color: 0x16a34a }));
-      cornerPost.position.set(px, 1.12, -2.45); scene.add(cornerPost);
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.4, 0.5), new THREE.MeshStandardMaterial({ color: 0xf5f5f4 }));
-      pad.position.set(px, 1.35, -2.45); scene.add(pad);
+    const ringApron = new THREE.Mesh(new THREE.BoxGeometry(35.2, 0.65, 6.4), new THREE.MeshStandardMaterial({ color: 0x581c87 }));
+    ringApron.position.set(541.5, -0.32, 0.25); scene.add(ringApron);
+    const ringCanvas = new THREE.Mesh(new THREE.PlaneGeometry(34.6, 6.1), new THREE.MeshStandardMaterial({ map: sodomMatTex, roughness: 0.68 }));
+    ringCanvas.rotation.x = -Math.PI / 2; ringCanvas.position.set(541.5, 0.02, 0.25); scene.add(ringCanvas);
+
+    // 4 Postes acolchoados verdes nos 4 cantos + Banquinhos verdes + 3 Cordas!
+    [
+      [524.5, -2.65],
+      [558.5, -2.65],
+      [524.5, 3.15],
+      [558.5, 3.15],
+    ].forEach(([px, pz]) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 2.35, 12), new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.45 }));
+      post.position.set(px, 1.15, pz); scene.add(post);
+      [0.82, 1.34, 1.86].forEach((py) => {
+        const turnbuckle = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.24, 0.54), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+        turnbuckle.position.set(px, py, pz); scene.add(turnbuckle);
+      });
+    });
+    // Banquinhos verdes nos cantos internos do ringue (sheet_07 frame 8 & 12!)
+    [[525.8, -2.1], [557.2, -2.1]].forEach(([sx, sz]) => {
+      const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.52, 10), new THREE.MeshStandardMaterial({ color: 0x166534 }));
+      stool.position.set(sx, 0.26, sz); scene.add(stool);
+    });
+    [0.82, 1.34, 1.86].forEach((ry) => {
+      const ropeBack = new THREE.Mesh(new THREE.BoxGeometry(34.2, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: 0xa3a380 }));
+      ropeBack.position.set(541.5, ry, -2.65); scene.add(ropeBack);
+      const ropeFront = new THREE.Mesh(new THREE.BoxGeometry(34.2, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0xa3a380, transparent: true, opacity: 0.55 }));
+      ropeFront.position.set(541.5, ry, 3.15); scene.add(ropeFront);
+      [-1, 1].forEach((side) => {
+        const ropeSide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 5.8), new THREE.MeshBasicMaterial({ color: 0xa3a380 }));
+        ropeSide.position.set(side < 0 ? 524.5 : 558.5, ry, 0.25); scene.add(ropeSide);
+      });
     });
 
-    const standWall = new THREE.Mesh(new THREE.BoxGeometry(58, 5.2, 1.5), new THREE.MeshStandardMaterial({ color: 0x1e1b4b }));
-    standWall.position.set(498, 2.4, -7.2); scene.add(standWall);
+    // Arquibancada escura com multidão roxa/lilás vibrando + refletores vermelhos no alto (sheet_07..sheet_08!)
+    const standWall = new THREE.Mesh(new THREE.BoxGeometry(52, 6.2, 1.5), new THREE.MeshStandardMaterial({ color: 0x090514 }));
+    standWall.position.set(541.5, 3.0, -7.6); scene.add(standWall);
+    [531, 542, 553].forEach((lx) => {
+      const redSpot = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.6), new THREE.MeshBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.35 }));
+      redSpot.position.set(lx, 5.3, -6.6); scene.add(redSpot);
+    });
     const crowdGroup = new THREE.Group();
-    const crowdColors = [0x9333ea, 0x3b82f6, 0xec4899, 0xeab308, 0x14b8a6];
-    for (let cx = 474, ci = 0; cx <= 520; cx += 1.4, ci++) {
+    const crowdColors = [0x6b21a8, 0x7e22ce, 0x581c87, 0x86198f, 0x4c1d95];
+    for (let cx = 523, ci = 0; cx <= 560; cx += 1.25, ci++) {
       for (let row = 0; row < 2; row++) {
         const spec = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.72, 0.35), new THREE.MeshBasicMaterial({ color: crowdColors[(ci + row) % crowdColors.length] }));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.72, 0.35), new THREE.MeshBasicMaterial({ color: crowdColors[(ci + row) % crowdColors.length] }));
         body.position.y = 0.36; spec.add(body);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshBasicMaterial({ color: 0xf1c27d }));
-        head.position.y = 0.94; spec.add(head);
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), new THREE.MeshBasicMaterial({ color: 0xf1c27d }));
-        arm.position.set(0.36, 0.95, 0); spec.add(arm);
-        spec.position.set(cx + row * 0.45, 0.65 + row * 1.15, -4.6 - row * 1.1);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.38), new THREE.MeshBasicMaterial({ color: 0xd97706 }));
+        head.position.y = 0.92; spec.add(head);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.52, 0.18), new THREE.MeshBasicMaterial({ color: 0xd97706 }));
+        arm.position.set(0.36, 0.94, 0); spec.add(arm);
+        spec.position.set(cx + row * 0.4, 0.45 + row * 1.05, -4.5 - row * 1.05);
         crowdGroup.add(spec);
       }
     }
     scene.add(crowdGroup);
-    const ringSign = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 0.9), new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('SODOM RING ARENA', '#ef4444', '#fef08a') }));
-    ringSign.position.set(497, 4.3, -6.2); scene.add(ringSign);
-
     animCallbacks.push((t) => {
       crowdGroup.children.forEach((sp, i) => {
-        sp.position.y = (i % 2 === 0 ? 0.65 : 1.8) + Math.abs(Math.sin(t * 6.5 + i * 0.7)) * 0.28;
+        sp.position.y = (i % 2 === 0 ? 0.45 : 1.5) + Math.abs(Math.sin(t * 6.5 + i * 0.7)) * 0.26;
       });
     });
 
-    const backFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(136, 6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
-    backFrontDark.rotation.x = -Math.PI / 2; backFrontDark.position.set(460, 0.01, 6.8); scene.add(backFrontDark);
+    const ringFrontDark = new THREE.Mesh(new THREE.PlaneGeometry(60, 6), new THREE.MeshStandardMaterial({ color: 0x05030a }));
+    ringFrontDark.rotation.x = -Math.PI / 2; ringFrontDark.position.set(542, 0.01, 6.9); scene.add(ringFrontDark);
     return refs;
   }
 
@@ -1852,6 +2090,10 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     [418, 456, 496].forEach(vx => addSteamVent(vx, 0, -2.7));
     [412, 444, 488, 526].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
     [428, 466, 510].forEach(cx => addTrafficCone(cx, 0, -1.65));
+    // Barris extras de cura antes da emboscada dos Andores e antes do Chefe Eddie!
+    addWoodBarrelProp(55.5, 0.9, 1.0, 'meat', true);
+    addWoodBarrelProp(472.5, -0.9, 1.0, 'potion', true);
+    addWoodBarrelProp(516.0, 0.85, 1.0, 'meat', true);
     animCallbacks.push((t) => {
       lanterns.forEach((l, i) => { l.position.y = 4.2 + Math.sin(t * 4 + i) * 0.18; });
     });
@@ -1886,6 +2128,9 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     [20, 52, 98].forEach(vx => addSteamVent(vx, 0, -2.9));
     [14, 56, 102, 174, 218, 258].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
     [36, 84, 158, 238].forEach(cx => addTrafficCone(cx, 0, -1.65));
+    addWoodBarrelProp(98.5, 0.85, 1.0, 'meat', true);
+    addWoodBarrelProp(136.5, -0.8, 1.0, 'potion', true);
+    addWoodBarrelProp(254.0, 0.75, 1.0, 'meat', true);
     animCallbacks.push((_t, dt) => { gears.forEach((g, idx) => { g.rotation.z += (idx % 2 === 0 ? 1.4 : -1.4) * dt; }); });
 
     refs.isElevatorAt = (x: number) => x >= 138;
@@ -1911,17 +2156,55 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
   }
 
   if (stageId === 'bonus_car') {
-    scene.background = new THREE.Color(0x0c1428);
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(40, 8), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture() }));
-    road.rotation.x = -Math.PI / 2; road.position.set(10, 0, 0.4); scene.add(road);
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(40, 6), new THREE.MeshStandardMaterial({ map: makeSidewalkTexture() }));
-    front.rotation.x = -Math.PI / 2; front.position.set(10, 0.01, 7.4); scene.add(front);
-    for (let x = -2; x < 26; x += 6.5) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(5.8, 7.0, 3.2), new THREE.MeshStandardMaterial({ map: makeBrickTexture('#334155', '#1e293b') }));
-      b.position.set(x, 3.5, -7.8); scene.add(b);
-      const sg = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.65), new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('BÔNUS!', '#facc15', '#fff') }));
-      sg.position.set(x, 3.2, -6.15); scene.add(sg);
-    }
+    // POSTO DE GASOLINA DE METRO CITY FIEL AO VÍDEO "stage 2.mp4" (sheet_08 frames 7-12 & sheet_09 frames 1-3!)
+    scene.background = new THREE.Color(0x60a5fa);
+    refs.customPropsOnly = true;
+
+    const stationPavement = new THREE.Mesh(new THREE.PlaneGeometry(44, 10.5), new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.85 }));
+    stationPavement.rotation.x = -Math.PI / 2; stationPavement.position.set(11, 0, 0.3); scene.add(stationPavement);
+    // Faixas brancas de estacionamento sob o carro!
+    [-1, 1].forEach((s) => {
+      const pLine = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 3.8), new THREE.MeshBasicMaterial({ color: 0xe5e7eb }));
+      pLine.rotation.x = -Math.PI / 2; pLine.rotation.z = s * 0.25;
+      pLine.position.set(11.5 + s * 3.6, 0.02, 0.6); scene.add(pLine);
+    });
+
+    // Skyline diurno de Metro City + arbustos verdes ao fundo!
+    addCitySkylineStrip(-4, 28, -14.5);
+    const hedge = new THREE.Mesh(new THREE.BoxGeometry(36, 1.35, 1.2), new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.9 }));
+    hedge.position.set(12, 0.68, -7.8); scene.add(hedge);
+
+    // Cobertura grande cinza do Posto de Gasolina no topo!
+    const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(32, 0.9, 9.5), new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 }));
+    canopyRoof.position.set(9.5, 5.15, -1.2); scene.add(canopyRoof);
+    const canopyTrim = new THREE.Mesh(new THREE.BoxGeometry(32.2, 0.22, 9.6), new THREE.MeshBasicMaterial({ color: 0xcbd5e1 }));
+    canopyTrim.position.set(9.5, 4.65, -1.2); scene.add(canopyTrim);
+
+    // Loja de conveniência à esquerda + pilhas de pneus decorativas! (sheet_08 frame 7)
+    const shopWall = new THREE.Mesh(new THREE.BoxGeometry(9.5, 4.5, 3.6), new THREE.MeshStandardMaterial({ color: 0x78716c }));
+    shopWall.position.set(2.2, 2.25, -4.4); scene.add(shopWall);
+    const shopAwning = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.35, 1.2), new THREE.MeshStandardMaterial({ color: 0xb91c1c }));
+    shopAwning.position.set(2.2, 3.85, -2.45); scene.add(shopAwning);
+    const shopWin = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 1.8), new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.55 }));
+    shopWin.position.set(2.4, 2.35, -2.58); scene.add(shopWin);
+    addTireStackProp(0.8, -1.65);
+
+    // Ilha quadriculada + 2 Bombas de Gasolina brancas/verdes à direita + Táxi amarelo lá atrás!
+    const pumpIsland = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.32, 2.8), new THREE.MeshStandardMaterial({ map: makeCheckerFloorTexture() }));
+    pumpIsland.position.set(17.8, 0.16, -1.5); scene.add(pumpIsland);
+    [16.8, 18.7].forEach((px) => {
+      const pumpBody = new THREE.Mesh(new THREE.BoxGeometry(0.85, 2.15, 0.65), new THREE.MeshStandardMaterial({ color: 0xf1f5f9 }));
+      pumpBody.position.set(px, 1.38, -1.5); scene.add(pumpBody);
+      const pumpMeter = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.48), new THREE.MeshBasicMaterial({ color: 0x0f172a }));
+      pumpMeter.position.set(px, 1.78, -1.16); scene.add(pumpMeter);
+      const pumpTop = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.7), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+      pumpTop.position.set(px, 2.52, -1.5); scene.add(pumpTop);
+    });
+    const bgTaxi = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.15, 1.6), new THREE.MeshStandardMaterial({ color: 0xeab308 }));
+    bgTaxi.position.set(22.2, 0.65, -4.8); scene.add(bgTaxi);
+
+    const frontBonus = new THREE.Mesh(new THREE.PlaneGeometry(44, 6), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+    frontBonus.rotation.x = -Math.PI / 2; frontBonus.position.set(11, 0.01, 7.6); scene.add(frontBonus);
     return refs;
   }
 
@@ -1968,6 +2251,9 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     [16, 54, 98, 148, 196, 246, 298].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
     [32, 76, 128, 174, 224, 274, 316].forEach(cx => addTrafficCone(cx, 0, -1.65));
     [40, 116, 188, 266].forEach(vx => addSteamVent(vx, 0, -2.8));
+    addWoodBarrelProp(112.0, 0.85, 1.0, 'potion', true);
+    addWoodBarrelProp(280.0, -0.8, 1.0, 'meat', true);
+    addWoodBarrelProp(320.0, 0.75, 1.0, 'potion', true);
     animCallbacks.push((t) => {
       waves.forEach((w, i) => { w.position.y = -0.35 + Math.sin(t * 3 + i) * 0.12; });
       yacht.position.y = -0.3 + Math.sin(t * 2) * 0.12;

@@ -50,6 +50,8 @@ import {
   attachArcadeWeaponToPlayerObj,
   sheathPlayerMainWeapon,
 } from '../lib/arcadeWeapons';
+import { saveArcadeScoreRecord } from '../lib/arcadeRanking';
+import ArcadeScoreRankingModal from './ArcadeScoreRankingModal';
 import type { UserData } from '../contexts/AuthContext';
 
 export interface ArcadeBeatEmUpProps {
@@ -326,32 +328,66 @@ function playSoundSafe(url?: string) {
   } catch { /* noop */ }
 }
 
-function makeSportsCarMesh(): { group: THREE.Group; bodyMesh: THREE.Mesh; hoodMesh: THREE.Mesh } {
+const INITIAL_EXTRA_LIVES = 1;
+const EXTRA_LIFE_SCORE_STEP = 100000;
+
+function getArcadeHudPlayerName(userData?: UserData | null): string {
+  const nick = (userData?.characterName || '').trim();
+  if (nick) return nick.toUpperCase();
+  const full = (userData?.name || '').trim();
+  if (!full) return 'HERÓI';
+  const parts = full.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0].toUpperCase();
+  return `${parts[0]} ${parts[parts.length - 1]}`.toUpperCase();
+}
+
+function makeSportsCarMesh(): {
+  group: THREE.Group;
+  bodyMesh: THREE.Mesh;
+  hoodMesh: THREE.Mesh;
+  applyDamageVisual: (hpRatio: number) => void;
+} {
+  // Sedã verde-petróleo estilo Bônus do Final Fight (stage 2.mp4 sheet_08..sheet_09!)
   const group = new THREE.Group();
-  const bodyMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(4.4, 0.75, 2.0),
-    new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.45, roughness: 0.35 })
-  );
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0f4c5c, metalness: 0.52, roughness: 0.32 });
+  const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.78, 2.05), bodyMat);
   bodyMesh.position.y = 0.62;
   group.add(bodyMesh);
 
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 0.65, 1.75),
-    new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75, metalness: 0.6 })
-  );
-  cabin.position.set(0.1, 1.25, 0);
+  const cabinMat = new THREE.MeshStandardMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.72, metalness: 0.6 });
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.68, 1.82), cabinMat);
+  cabin.position.set(0.15, 1.28, 0);
   group.add(cabin);
 
-  const hoodMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(1.3, 0.12, 1.85),
-    new THREE.MeshStandardMaterial({ color: 0xb91c1c, metalness: 0.5 })
+  const roofCap = new THREE.Mesh(
+    new THREE.BoxGeometry(2.15, 0.1, 1.84),
+    new THREE.MeshStandardMaterial({ color: 0x0f4c5c, metalness: 0.5 })
   );
-  hoodMesh.position.set(-1.35, 1.0, 0);
+  roofCap.position.set(0.15, 1.64, 0);
+  group.add(roofCap);
+
+  const hoodMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1.38, 0.13, 1.92),
+    new THREE.MeshStandardMaterial({ color: 0x155e75, metalness: 0.55 })
+  );
+  hoodMesh.position.set(-1.42, 1.02, 0);
   group.add(hoodMesh);
+
+  const trunkMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1.05, 0.12, 1.9),
+    new THREE.MeshStandardMaterial({ color: 0x155e75, metalness: 0.55 })
+  );
+  trunkMesh.position.set(1.68, 1.01, 0);
+  group.add(trunkMesh);
+
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.2), new THREE.MeshBasicMaterial({ color: 0xf8fafc }));
+  plate.position.set(-2.31, 0.42, 0);
+  plate.rotation.y = -Math.PI / 2;
+  group.add(plate);
 
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 12);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 });
-  [[-1.3, -0.95], [-1.3, 0.95], [1.3, -0.95], [1.3, 0.95]].forEach(([wx, wz]) => {
+  [[-1.35, -0.98], [-1.35, 0.98], [1.35, -0.98], [1.35, 0.98]].forEach(([wx, wz]) => {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.rotation.x = Math.PI / 2;
     w.position.set(wx, 0.36, wz);
@@ -362,11 +398,30 @@ function makeSportsCarMesh(): { group: THREE.Group; bodyMesh: THREE.Mesh; hoodMe
   const hlMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
   [-0.65, 0.65].forEach(hz => {
     const hl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.35), hlMat);
-    hl.position.set(-2.21, 0.65, hz);
+    hl.position.set(-2.31, 0.65, hz);
     group.add(hl);
   });
 
-  return { group, bodyMesh, hoodMesh };
+  const applyDamageVisual = (hpRatio: number) => {
+    const dmg = 1 - Math.max(0, Math.min(1, hpRatio));
+    hoodMesh.rotation.z = -dmg * 0.38;
+    hoodMesh.position.y = 1.02 + dmg * 0.14;
+    trunkMesh.rotation.z = dmg * 0.32;
+    cabin.scale.y = Math.max(0.38, 1 - dmg * 0.55);
+    cabin.position.y = 1.28 - dmg * 0.22;
+    roofCap.position.y = 1.64 - dmg * 0.42;
+    roofCap.rotation.z = dmg * 0.15;
+    if (hpRatio <= 0.65) {
+      cabinMat.color.setHex(0x475569);
+      cabinMat.opacity = 0.42;
+    }
+    if (hpRatio <= 0.3) {
+      bodyMat.color.setHex(0x1e293b);
+      bodyMesh.scale.y = 0.82;
+    }
+  };
+
+  return { group, bodyMesh, hoodMesh, applyDamageVisual };
 }
 
 export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_streets', onExit }: ArcadeBeatEmUpProps) {
@@ -384,8 +439,15 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
   const [playerHp, setPlayerHp] = useState(100);
   const [playerMaxHp, setPlayerMaxHp] = useState(100);
+  const [score, setScore] = useState(0);
+  const scoreRef = useRef(0);
+  const [extraLives, setExtraLives] = useState(INITIAL_EXTRA_LIVES);
+  const extraLivesRef = useRef(INITIAL_EXTRA_LIVES);
+  const [showRankingModal, setShowRankingModal] = useState(false);
   const [coinsCollected, setCoinsCollected] = useState(0);
   const [killsCount, setKillsCount] = useState(0);
+  const killsRef = useRef(0);
+  const hudPlayerName = getArcadeHudPlayerName(userData);
   const [waveBanner, setWaveBanner] = useState<string>('');
   const [goArrow, setGoArrow] = useState(false);
   const [bossHud, setBossHud] = useState<{ name: string; hp: number; maxHp: number; barSize: number } | null>(null);
@@ -610,13 +672,42 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     };
   }, []);
 
+  const resetArcadeSessionStats = () => {
+    scoreRef.current = 0;
+    setScore(0);
+    extraLivesRef.current = INITIAL_EXTRA_LIVES;
+    setExtraLives(INITIAL_EXTRA_LIVES);
+    killsRef.current = 0;
+    setKillsCount(0);
+    setCoinsCollected(0);
+  };
+
+  const persistCurrentRunToRanking = (completedCampaign: boolean) => {
+    if (!userData?.uid || scoreRef.current <= 0) return;
+    const stMeta = getStageMeta(stageId);
+    saveArcadeScoreRecord({
+      studentId: userData.uid,
+      studentName: userData.name || 'Guerreiro',
+      characterName: userData.characterName || hudPlayerName,
+      avatarConfig: userData.avatarConfig,
+      equippedItems,
+      studentXp: userData.xp || 0,
+      studentClassId: userData.classId || '',
+      score: scoreRef.current,
+      kills: killsRef.current,
+      stageReachedId: stageId,
+      stageReachedLabel: stMeta.label,
+      completedCampaign,
+      tenantId: userData.tenantId || (userData as any)?.tenant_id || null,
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     if (loadingData) return;
     const container = containerRef.current;
     if (!container) return;
 
     const stageMeta = getStageMeta(stageId);
-    const stageLen = stageMeta.length;
     const stageWaves = getWavesForStage(stageId);
     const stageZones = getStageZones(stageId);
     const stagePortals = getStagePortals(stageId);
@@ -645,6 +736,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
     const advanceToNextStageWithMap = (completedId: ArcadeStageId, nextId: ArcadeStageId | null) => {
       if (!nextId) {
+        persistCurrentRunToRanking(true);
         if (ROUND_MAP_NUMBERS[completedId]) {
           setRoundClearInfo({ completedStageId: completedId, nextStageId: null, roundNum: ROUND_MAP_NUMBERS[completedId]! });
           setTimeout(() => {
@@ -675,12 +767,12 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           }, 520);
         }, envRefs.stageExitWalkTo ? 2800 : 2500);
       } else {
-        // Bônus -> Fade-Out direto para o próximo estágio
+        // Bônus -> pausa para ver o "OH! MY GOD!!" e Fade-Out para o próximo estágio
         setTimeout(() => {
           if (disposed) return;
           setFadeOpacity(1);
           setTimeout(() => { if (!disposed) setStageId(nextId); }, 480);
-        }, 1100);
+        }, completedId === 'bonus_car' ? 2300 : 1200);
       }
     };
     let nextFloatId = 1;
@@ -693,6 +785,28 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       setTimeout(() => {
         if (!disposed) setFloatingTexts(prev => prev.filter(p => p.id !== fid));
       }, 850);
+    };
+
+    // Soma pontos e concede +1 vida/chance extra a cada 100.000 PTS!
+    const awardArcadePoints = (pts: number, worldPos?: THREE.Vector3, cam?: THREE.PerspectiveCamera) => {
+      if (pts <= 0) return;
+      const prevScore = scoreRef.current;
+      const nextScore = prevScore + Math.round(pts);
+      scoreRef.current = nextScore;
+      setScore(nextScore);
+
+      const prevMilestone = Math.floor(prevScore / EXTRA_LIFE_SCORE_STEP);
+      const nextMilestone = Math.floor(nextScore / EXTRA_LIFE_SCORE_STEP);
+      if (nextMilestone > prevMilestone) {
+        const gainedLives = nextMilestone - prevMilestone;
+        extraLivesRef.current += gainedLives;
+        setExtraLives(extraLivesRef.current);
+        playElixirChimeSound();
+        setStatusMessage(`🎉 1UP! +${gainedLives} VIDA EXTRA (${hudPlayerName}=${extraLivesRef.current})!`);
+        if (worldPos && cam) {
+          spawnFloat(`🌟 1UP! ${hudPlayerName}=${extraLivesRef.current}`, '#4ade80', worldPos.clone().add(new THREE.Vector3(0, 0.7, 0)), cam);
+        }
+      }
     };
 
     setPlayerMaxHp(computedMaxHp);
@@ -901,13 +1015,28 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     const crateGeo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
     const barrelGeo = new THREE.CylinderGeometry(0.42, 0.42, 1.05, 14);
 
+    let bonusCarVisual: ReturnType<typeof makeSportsCarMesh> | null = null;
+
+    // Detecta automaticamente se um objeto quebrável está antes de um grande desafio (Chefe, Andore, Sub-Chefe ou grupo grande >= 4)
+    const isNearHardChallenge = (px: number): boolean => {
+      return stageWaves.some((w) => {
+        const isHard = Boolean(
+          w.isBossWave ||
+          w.spawns.length >= 4 ||
+          w.spawns.some(s => s.isBoss || s.isAndore || s.isSubBoss)
+        );
+        return isHard && px >= w.triggerX - 20 && px <= w.lockMaxX + 2;
+      });
+    };
+
     if (stageId === 'bonus_car') {
       const car = makeSportsCarMesh();
-      car.group.position.set(11, 0, 0.1);
+      bonusCarVisual = car;
+      car.group.position.set(11.4, 0, 0.25);
       scene.add(car.group);
       const carMaxHp = Math.max(280, playerAttackPower * 14);
-      crates.push({ id: 9001, kind: 'car', x: 11, z: 0.1, hp: carMaxHp, maxHp: carMaxHp, mesh: car.group, broken: false });
-      setBossHud({ name: '🚗 Carro Turbo (Bônus)', hp: carMaxHp, maxHp: carMaxHp, barSize: carMaxHp });
+      crates.push({ id: 9001, kind: 'car', x: 11.4, z: 0.25, hp: carMaxHp, maxHp: carMaxHp, mesh: car.group, broken: false });
+      setBossHud({ name: '🚗 Carro Sedan (Bônus)', hp: carMaxHp, maxHp: carMaxHp, barSize: carMaxHp });
     } else if (stageId === 'bonus_glass') {
       // Sequência de vidraças finas (1-2 golpes) e vidros reforçados (3-5 golpes)
       [8, 15, 22, 29, 36, 42].forEach((gx, idx) => {
@@ -934,7 +1063,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         let crateIdSeq = 1;
         stageZones.forEach((zDef) => {
           const zonePreBossX = zDef.preBossX ?? preBossX;
-          for (let px = zDef.minX + 8; px < zDef.maxX - 7; px += 15) {
+          for (let px = zDef.minX + 8; px < zDef.maxX - 7; px += 14) {
             const pz = crateIdSeq % 2 === 0 ? -1.45 : 1.45;
             const kind = crateIdSeq % 2 === 0 ? 'crate' : 'barrel';
             const m = new THREE.Mesh(
@@ -943,7 +1072,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             );
             m.position.set(px, envRefs.floorHeightAt(px) + (kind === 'crate' ? 0.45 : 0.525), pz);
             scene.add(m);
-            const isPreBoss = px >= zonePreBossX - 16 && px <= zonePreBossX + 8;
+            const isPreBoss = (px >= zonePreBossX - 18 && px <= zonePreBossX + 8) || isNearHardChallenge(px);
             crates.push({ id: crateIdSeq++, kind, x: px, z: pz, hp: 35, maxHp: 35, mesh: m, broken: false, isPreBoss });
           }
         });
@@ -960,7 +1089,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           maxHp: bpHp,
           mesh: bp.mesh,
           broken: false,
-          isPreBoss: bp.isPreBoss,
+          isPreBoss: Boolean(bp.isPreBoss || isNearHardChallenge(bp.x)),
           solidTop: bp.solidTop,
           guaranteedDrop: bp.guaranteedDrop,
         });
@@ -1228,6 +1357,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       });
     };
 
+    if (stageId === 'bonus_car') {
+      // Cano de ferro disponível no chão do posto igual ao vídeo "stage 2.mp4" (sheet_08)!
+      spawnDrop('weapon', WEAPON_META.pipe.uses, 12.2, 1.85, { weaponKind: 'pipe' });
+    }
+
     // ---- INIMIGOS (CHEFES GLB + SUB-CHEFES COM SKIN + GANGUES HUMANAS E MONSTROS EM CUBOS) ----
     interface EnemyEntity {
       id: number;
@@ -1354,9 +1488,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
     const spawnEnemyFromSpec = (
       sp: {
-        side: 'front' | 'back' | 'drop' | 'door';
+        side: 'front' | 'back' | 'drop' | 'door' | 'seat';
         doorX?: number;
         doorZ?: number;
+        seatX?: number;
+        seatZ?: number;
         zOffset: number;
         isBoss?: boolean;
         isSubBoss?: boolean;
@@ -1404,13 +1540,21 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
       const spawnX = sp.side === 'door'
         ? (sp.doorX ?? (lockMinX + lockMaxX) / 2)
-        : sp.side === 'drop'
-          ? (lockMinX + lockMaxX) / 2 + (sIdx % 2 === 0 ? 4 : -4)
-          : (sp.side === 'front' ? lockMaxX + 1.8 + sIdx * 1.1 : lockMinX - 1.8 - sIdx * 1.1);
+        : sp.side === 'seat'
+          ? (sp.seatX ?? (lockMinX + lockMaxX) / 2 + sIdx * 1.6)
+          : sp.side === 'drop'
+            ? (lockMinX + lockMaxX) / 2 + (sIdx % 2 === 0 ? 4 : -4)
+            : (sp.side === 'front' ? lockMaxX + 1.8 + sIdx * 1.1 : lockMinX - 1.8 - sIdx * 1.1);
       const spawnZ = sp.side === 'door'
         ? (sp.doorZ ?? -3.5)
-        : Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, sp.zOffset));
-      const spawnY = sp.side === 'drop' ? 6.8 + sIdx * 0.7 : envRefs.floorHeightAt(spawnX);
+        : sp.side === 'seat'
+          ? (sp.seatZ ?? -2.15)
+          : Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, sp.zOffset));
+      const spawnY = sp.side === 'drop'
+        ? 6.8 + sIdx * 0.7
+        : sp.side === 'seat'
+          ? envRefs.floorHeightAt(spawnX) + 0.36
+          : envRefs.floorHeightAt(spawnX);
 
       const g = new THREE.Group();
       g.position.set(spawnX, spawnY, spawnZ);
@@ -1433,7 +1577,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         isMonster: isBoss || !!gangTmpl.isMonster,
         isSpider: /aranha|spider/i.test(name),
         moveProfile: isBoss ? 'giant' : gangTmpl.moveProfile,
-        plannedMove: 'punch',
+        plannedMove: sp.side === 'seat' ? 'crouch' : 'punch',
         lastMove: '',
         heldWeapon: null,
         acroPhase: 0,
@@ -1441,9 +1585,9 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         speed: isBoss ? 3.1 + stageIdxNum * 0.16 : gangTmpl.speed,
         x: spawnX,
         y: spawnY,
-        vy: sp.side === 'door' && isBoss ? 6.0 : 0,
+        vy: (sp.side === 'door' && isBoss) ? 6.0 : (sp.side === 'seat' ? 4.2 : 0),
         z: spawnZ,
-        vx: 0,
+        vx: sp.side === 'seat' ? -2.2 : 0,
         hp: maxHp,
         maxHp,
         barSize,
@@ -1794,6 +1938,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           }
 
           if (isCrit) shakeUntil = now + 130;
+          awardArcadePoints(
+            isSpecial ? 250 : (res.isCritical ? 200 : 100),
+            new THREE.Vector3(en.x, en.y + 1.8, en.z),
+            camera
+          );
           spawnSpark((playerState.x + en.x) / 2, en.y + 1.15, en.z + 0.1, isSpecial ? 0xfacc15 : 0xffffff);
           spawnFloat(
             `${res.isCritical ? '💥 ' : ''}-${res.damage}`,
@@ -1854,83 +2003,193 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         const crZ = cr.kind === 'car' ? 2.0 : reachZ;
         const inFront = isSpecial ? Math.abs(dx) <= crReach : (dx * playerState.facing >= -0.6 && Math.abs(dx) <= crReach);
         if (inFront && dz <= crZ) {
-          const dmg = Math.round(playerAttackPower * (isSpecial ? 1.8 : 1));
-          cr.hp = Math.max(0, cr.hp - dmg);
-          spawnSpark(cr.x + (cr.kind === 'car' ? (dx > 0 ? -1.4 : 1.4) : 0), 0.9, cr.z, 0xfbbf24);
-          if (cr.kind === 'car') {
-            cr.mesh.rotation.z = (Math.random() - 0.5) * 0.08;
-            setBossHud({ name: '🚗 Carro Turbo (Bônus)', hp: cr.hp, maxHp: cr.maxHp, barSize: cr.maxHp });
-            spawnFloat(`-${dmg}`, '#facc15', new THREE.Vector3(cr.x, 1.8, cr.z), camera);
+          const dmg = Math.round(playerAttackPower * (isSpecial ? 1.8 : 1) + (wMeta?.dmgBonus || 0));
+          damageOrBreakCrate(cr, dmg, dx > 0 ? -1.4 : 1.4, false);
+        }
+      });
+    };
+
+    // Quebra/danifica objetos destrutíveis (usado tanto por golpes corpo a corpo quanto por facas/itens arremessados!)
+    const damageOrBreakCrate = (cr: CrateEntity, dmg: number, sparkOffsetX = 0, instantBreak = false) => {
+      if (cr.broken) return;
+      cr.hp = (instantBreak && cr.kind !== 'car' && cr.kind !== 'glass_thin' && cr.kind !== 'glass_thick')
+        ? 0
+        : Math.max(0, cr.hp - dmg);
+      spawnSpark(cr.x + (cr.kind === 'car' ? sparkOffsetX : 0), 0.9, cr.z, 0xfbbf24);
+
+      if (cr.kind === 'car') {
+        cr.mesh.rotation.z = (Math.random() - 0.5) * 0.08;
+        bonusCarVisual?.applyDamageVisual(cr.hp / Math.max(1, cr.maxHp));
+        awardArcadePoints(500, new THREE.Vector3(cr.x, 1.8, cr.z), camera);
+        setBossHud({ name: '🚗 Carro Sedan (Bônus)', hp: cr.hp, maxHp: cr.maxHp, barSize: cr.maxHp });
+        spawnFloat(`-${dmg} (+500 PTS)`, '#facc15', new THREE.Vector3(cr.x, 1.8, cr.z), camera);
+      }
+
+      if (cr.hp <= 0) {
+        cr.broken = true;
+        if (cr.kind === 'car') {
+          // Mantém a carcaça amassada visível e traz o dono chorando "OH! MY GOD!!" igual ao vídeo stage 2.mp4 (sheet_09)!
+          bonusCarVisual?.applyDamageVisual(0);
+          finished = true;
+          setBossHud(null);
+          const remBonusSec = Math.max(0, Math.ceil((bonusEndAt - performance.now()) / 1000));
+          const bonusPts = 20000 + remBonusSec * 300;
+          awardArcadePoints(bonusPts, new THREE.Vector3(cr.x, 2.2, cr.z), camera);
+          setWaveBanner(`PERFECT! +${bonusPts.toLocaleString('pt-BR')} PTS!`);
+          spawnFloat('😭 OH! MY GOD!!', '#fef08a', new THREE.Vector3(cr.x - 2.8, 1.9, cr.z + 0.5), camera);
+          setCoinsCollected(c => c + 300);
+
+          // Boneco do dono ajoelhado lamentando ao lado do carro destruído!
+          (async () => {
+            try {
+              const bredCfg = { gender: 'male', skinColor: '#f1c27d', hairStyle: 'short', hairColor: '#92400e', shirtColor: '#dc2626', pantsColor: '#1e3a8a', shoesColor: '#0f172a' };
+              const bSkin = await generateMinecraftSkinUrl(bredCfg as any);
+              const bTex = await loadSkinTexture(bSkin);
+              if (disposed) return;
+              const ownerPo: any = new PlayerObject();
+              if (ownerPo.cape) { ownerPo.cape.visible = false; ownerPo.remove(ownerPo.cape); }
+              if (ownerPo.elytra) { ownerPo.elytra.visible = false; ownerPo.remove(ownerPo.elytra); }
+              if (ownerPo.ears) { ownerPo.ears.visible = false; ownerPo.skin?.head?.remove?.(ownerPo.ears); }
+              if (bTex) ownerPo.skin.map = bTex;
+              const sc = 1.8 / 32.25;
+              ownerPo.scale.setScalar(sc);
+              ownerPo.position.set(cr.x - 3.1, 13.0 * sc, cr.z + 0.45);
+              ownerPo.rotation.y = Math.PI / 2;
+              applyCombatPose(ownerPo, 'crouch', 1);
+              scene.add(ownerPo);
+            } catch { /* noop */ }
+          })();
+
+          advanceToNextStageWithMap(stageId, getNextCampaignStage(stageId));
+        } else if (cr.kind === 'glass_thin' || cr.kind === 'glass_thick') {
+          scene.remove(cr.mesh);
+          awardArcadePoints(800, new THREE.Vector3(cr.x, 1.5, cr.z), camera);
+          spawnFloat('🪟 +25 🪙 (+800 PTS)', '#38bdf8', new THREE.Vector3(cr.x, 1.5, cr.z), camera);
+          setCoinsCollected(c => c + 25);
+          if (crates.every(c => c.broken)) {
+            finished = true;
+            awardArcadePoints(20000, new THREE.Vector3(cr.x, 2.0, cr.z), camera);
+            setWaveBanner('PERFECT! VIDRAÇAS DESTRUÍDAS! +20.000 PTS!');
+            setCoinsCollected(c => c + 200);
+            advanceToNextStageWithMap(stageId, getNextCampaignStage(stageId));
           }
-          if (cr.hp <= 0) {
-            cr.broken = true;
-            scene.remove(cr.mesh);
-            if (cr.kind === 'car') {
-              finished = true;
-              setBossHud(null);
-              spawnFloat('💥 CARRO DESTRUÍDO! +300 🪙', '#22c55e', new THREE.Vector3(cr.x, 1.8, cr.z), camera);
-              setCoinsCollected(c => c + 300);
-              advanceToNextStageWithMap(stageId, getNextCampaignStage(stageId));
-            } else if (cr.kind === 'glass_thin' || cr.kind === 'glass_thick') {
-              spawnFloat('🪟 +25 🪙', '#38bdf8', new THREE.Vector3(cr.x, 1.5, cr.z), camera);
-              setCoinsCollected(c => c + 25);
-              if (crates.every(c => c.broken)) {
-                finished = true;
-                setWaveBanner('VIDRAÇAS DESTRUÍDAS! +200 🪙');
-                setCoinsCollected(c => c + 200);
-                advanceToNextStageWithMap(stageId, getNextCampaignStage(stageId));
-              }
+        } else {
+          scene.remove(cr.mesh);
+          awardArcadePoints(400, new THREE.Vector3(cr.x, 1.2, cr.z), camera);
+          const propLabels: Record<string, string> = {
+            cone: '⚠️ Cone!',
+            fire_barrel: '🔥 Latão!',
+            barrel: '🛢️ Tambor!',
+            wood_barrel: '🪵 Barril!',
+            phone_booth: '☎️ Cabine!',
+            trash_can: '🗑️ Lata de Lixo!',
+            tire_stack: '🛞 Pneus!',
+            crate: '📦 Caixote!',
+          };
+          spawnFloat(propLabels[cr.kind] || '📦 Quebrou!', '#fbbf24', new THREE.Vector3(cr.x, 1.0, cr.z), camera);
+
+          const elixirCand = healItemsPool.find(h => h.tier === 'elixir' && calculatedRankIndex >= h.minRankIndex);
+          const meatCand = healItemsPool.find(h => h.tier === 'meat');
+          const potionCand = healItemsPool.find(h => h.tier === 'potion') || healItemsPool.find(h => h.tier !== 'elixir');
+          const playerNeedsHeal = playerState.hp < playerState.maxHp * 0.72;
+          const highHealPriority = Boolean(cr.isPreBoss || playerNeedsHeal);
+          const nearbyWeaponExists = Boolean(
+            playerState.tempWeapon ||
+            drops.some(d => !d.collected && d.kind === 'weapon' && Math.abs(d.x - cr.x) < 10)
+          );
+
+          if (cr.guaranteedDrop) {
+            // Se o jogador estiver com pouca vida (< 50%) e quebraria mais uma arma repetida, prioriza item de cura!
+            if ((cr.guaranteedDrop === 'pipe' || cr.guaranteedDrop === 'knife' || cr.guaranteedDrop === 'sword') && playerState.hp < playerState.maxHp * 0.45 && nearbyWeaponExists && (meatCand || potionCand)) {
+              const fallbackHeal = meatCand || potionCand!;
+              spawnDrop('heal', fallbackHeal.healAmount, cr.x, cr.z, { healItem: fallbackHeal });
+            } else if (cr.guaranteedDrop === 'pipe' || cr.guaranteedDrop === 'knife' || cr.guaranteedDrop === 'sword') {
+              spawnDrop('weapon', WEAPON_META[cr.guaranteedDrop].uses, cr.x, cr.z, { weaponKind: cr.guaranteedDrop });
+            } else if (cr.guaranteedDrop === 'meat' && meatCand) {
+              meatDropsUsed++;
+              spawnDrop('heal', meatCand.healAmount, cr.x, cr.z, { healItem: meatCand });
+            } else if (cr.guaranteedDrop === 'potion' && potionCand) {
+              potionDropsUsed++;
+              spawnDrop('heal', potionCand.healAmount, cr.x, cr.z, { healItem: potionCand });
             } else {
-              const propLabels: Record<string, string> = {
-                cone: '⚠️ Cone!',
-                fire_barrel: '🔥 Latão!',
-                barrel: '🛢️ Tambor!',
-                wood_barrel: '🪵 Barril!',
-                phone_booth: '☎️ Cabine!',
-                trash_can: '🗑️ Lata de Lixo!',
-                tire_stack: '🛞 Pneus!',
-                crate: '📦 Caixote!',
-              };
-              spawnFloat(propLabels[cr.kind] || '📦 Quebrou!', '#fbbf24', new THREE.Vector3(cr.x, 1.0, cr.z), camera);
-              const elixirCand = healItemsPool.find(h => h.tier === 'elixir' && calculatedRankIndex >= h.minRankIndex);
-              const meatCand = healItemsPool.find(h => h.tier === 'meat');
-              const potionCand = healItemsPool.find(h => h.tier === 'potion') || healItemsPool.find(h => h.tier !== 'elixir');
-              if (cr.guaranteedDrop) {
-                if (cr.guaranteedDrop === 'pipe' || cr.guaranteedDrop === 'knife' || cr.guaranteedDrop === 'sword') {
-                  spawnDrop('weapon', WEAPON_META[cr.guaranteedDrop].uses, cr.x, cr.z, { weaponKind: cr.guaranteedDrop });
-                } else if (cr.guaranteedDrop === 'meat' && meatCand) {
-                  meatDropsUsed++;
-                  spawnDrop('heal', meatCand.healAmount, cr.x, cr.z, { healItem: meatCand });
-                } else if (cr.guaranteedDrop === 'potion' && potionCand) {
-                  potionDropsUsed++;
-                  spawnDrop('heal', potionCand.healAmount, cr.x, cr.z, { healItem: potionCand });
-                } else {
-                  spawnDrop('coin', 20, cr.x, cr.z);
-                }
-              } else {
-                const roll = Math.random();
-                if (cr.kind !== 'cone' && cr.isPreBoss && elixirCand && elixirDropsUsed < 1 && roll < 0.08) {
-                  elixirDropsUsed++;
-                  spawnDrop('heal', elixirCand.healAmount, cr.x, cr.z, { healItem: elixirCand });
-                } else if (cr.kind !== 'cone' && meatCand && meatDropsUsed < 2 && roll < (cr.isPreBoss ? 0.38 : 0.18)) {
-                  meatDropsUsed++;
-                  spawnDrop('heal', meatCand.healAmount, cr.x, cr.z, { healItem: meatCand });
-                } else if (cr.kind !== 'cone' && potionCand && potionDropsUsed < 3 && roll < (cr.isPreBoss ? 0.62 : 0.40)) {
-                  potionDropsUsed++;
-                  spawnDrop('heal', potionCand.healAmount, cr.x, cr.z, { healItem: potionCand });
-                } else if (cr.kind !== 'cone' && roll < 0.70) {
-                  const wk = (['knife', 'sword', 'pipe'] as ArcadeWeaponKind[])[Math.floor(Math.random() * 3)];
-                  spawnDrop('weapon', WEAPON_META[wk].uses, cr.x, cr.z, { weaponKind: wk });
-                } else if (roll < 0.90) {
-                  spawnDrop('coin', cr.kind === 'cone' ? 10 : 15 + Math.floor(Math.random() * 16), cr.x, cr.z);
-                } else {
-                  spawnFloat('💨 Vazio!', '#94a3b8', new THREE.Vector3(cr.x, 1.3, cr.z), camera);
-                }
-              }
+              spawnDrop('coin', 20, cr.x, cr.z);
+            }
+          } else {
+            const roll = Math.random();
+            if (cr.kind !== 'cone' && cr.isPreBoss && elixirCand && elixirDropsUsed < 2 && roll < 0.14) {
+              elixirDropsUsed++;
+              spawnDrop('heal', elixirCand.healAmount, cr.x, cr.z, { healItem: elixirCand });
+            } else if (cr.kind !== 'cone' && meatCand && meatDropsUsed < 7 && roll < (highHealPriority ? 0.46 : 0.25)) {
+              meatDropsUsed++;
+              spawnDrop('heal', meatCand.healAmount, cr.x, cr.z, { healItem: meatCand });
+            } else if (cr.kind !== 'cone' && potionCand && potionDropsUsed < 9 && roll < (highHealPriority ? 0.78 : 0.54)) {
+              potionDropsUsed++;
+              spawnDrop('heal', potionCand.healAmount, cr.x, cr.z, { healItem: potionCand });
+            } else if (cr.kind !== 'cone' && !nearbyWeaponExists && roll < (highHealPriority ? 0.88 : 0.70)) {
+              const wk = (['knife', 'sword', 'pipe'] as ArcadeWeaponKind[])[Math.floor(Math.random() * 3)];
+              spawnDrop('weapon', WEAPON_META[wk].uses, cr.x, cr.z, { weaponKind: wk });
+            } else if (roll < 0.93) {
+              spawnDrop('coin', cr.kind === 'cone' ? 10 : 15 + Math.floor(Math.random() * 16), cr.x, cr.z);
+            } else {
+              spawnFloat('💨 Vazio!', '#94a3b8', new THREE.Vector3(cr.x, 1.3, cr.z), camera);
             }
           }
         }
-      });
+      }
+    };
+
+    // Verifica se o jogador zerou o HP: se tiver vida/chance extra (> 0), revive imediatamente onde parou; se for =0, Game Over!
+    const handlePlayerZeroHp = (now: number) => {
+      if (playerState.hp > 0 || finished) return;
+      if (extraLivesRef.current > 0) {
+        extraLivesRef.current -= 1;
+        setExtraLives(extraLivesRef.current);
+        playerState.hp = playerState.maxHp;
+        setPlayerHp(playerState.maxHp);
+
+        // Limpa status negativos e faz queda/entrada invulnerável igual ao Final Fight!
+        playerState.burnUntil = 0;
+        playerState.bleedUntil = 0;
+        playerState.poisonUntil = 0;
+        playerState.freezeStacks = 0;
+        playerState.freezeUntil = 0;
+        if (playerState.freezeMesh) { playerState.group.remove(playerState.freezeMesh); playerState.freezeMesh = null; }
+        playerState.webStacks = 0;
+        playerState.webUntil = 0;
+        playerState.webBreakHits = 0;
+        if (playerState.webMesh) { playerState.group.remove(playerState.webMesh); playerState.webMesh = null; }
+        playerState.grabbedByPiledriverUntil = 0;
+        playerState.knockdownUntil = 0;
+        playerState.getupUntil = 0;
+        playerState.hurtUntil = 0;
+        playerState.y = envRefs.floorHeightAt(playerState.x) + 2.4;
+        playerState.vy = 0;
+        playerState.invulnUntil = now + 2800;
+
+        // Afasta levemente os inimigos colados ao renascer
+        enemies.forEach((en) => {
+          if (!en.dead && en.koUntil === 0 && Math.abs(en.x - playerState.x) < 2.8 && Math.abs(en.z - playerState.z) < 1.8) {
+            en.vx = (en.x >= playerState.x ? 1 : -1) * 6.5;
+            en.hurtUntil = Math.max(en.hurtUntil, now + 360);
+            en.windupUntil = 0;
+          }
+        });
+
+        shockwaveMesh.visible = true;
+        shockwaveMesh.position.set(playerState.x, envRefs.floorHeightAt(playerState.x) + 0.08, playerState.z);
+        shockwaveMesh.scale.setScalar(0.3);
+        (shockwaveMesh.material as THREE.MeshBasicMaterial).opacity = 0.9;
+        playerState.specialUntil = now + 380;
+
+        playElixirChimeSound();
+        setStatusMessage(`⚡ REVIVEU! Restam ${hudPlayerName}=${extraLivesRef.current}`);
+        spawnFloat(`⚡ CONTINUE! ${hudPlayerName}=${extraLivesRef.current}`, '#4ade80', new THREE.Vector3(playerState.x, playerState.y + 1.2, playerState.z), camera);
+      } else {
+        finished = true;
+        playerState.group.visible = true;
+        persistCurrentRunToRanking(false);
+        setGameState('defeat');
+      }
     };
 
     let lastTime = performance.now();
@@ -1969,7 +2228,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           playerState.invulnUntil = now + 600;
           setPlayerHp(playerState.hp);
           spawnFloat('-18 🔥 Armadilha!', '#fb923c', new THREE.Vector3(playerState.x, 2.0, playerState.z), camera);
-          if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+          handlePlayerZeroHp(now);
         }
       });
 
@@ -2025,7 +2284,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           setPlayerHp(playerState.hp);
           spawnFlamePuff(playerState.x, playerState.y + 0.5, playerState.z);
           spawnFloat(`🔥 -${fDmg}`, '#fb923c', new THREE.Vector3(playerState.x, playerState.y + 2.0, playerState.z), camera);
-          if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+          handlePlayerZeroHp(now);
         }
         if (now >= gf.until) { scene.remove(gf.mesh); groundFires.splice(gi, 1); }
       }
@@ -2040,7 +2299,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           spawnFlamePuff(playerState.x, playerState.y + 0.5, playerState.z);
           spawnFloat(`🔥 -${burnDmg}`, '#fb923c', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
           setStatusMessage('🔥 EM CHAMAS! Queimando...');
-          if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+          handlePlayerZeroHp(now);
         }
         if (now < playerState.bleedUntil && now >= playerState.nextBleedTick) {
           playerState.nextBleedTick = now + 900;
@@ -2050,7 +2309,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           spawnBloodDroplet(playerState.x, playerState.y + 0.9, playerState.z);
           spawnFloat(`🩸 -${bleedDmg}`, '#f87171', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
           setStatusMessage('🩸 SANGRANDO!');
-          if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+          handlePlayerZeroHp(now);
         }
         if (now < playerState.poisonUntil && now >= playerState.nextPoisonTick) {
           playerState.nextPoisonTick = now + 1000;
@@ -2060,7 +2319,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           spawnSpark(playerState.x, playerState.y + 1.0, playerState.z, 0x22c55e);
           spawnFloat(`☠️ -${poiDmg}`, '#4ade80', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
           setStatusMessage('☠️ ENVENENADO! (Mais lento)');
-          if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+          handlePlayerZeroHp(now);
         }
         if (playerState.freezeUntil > 0 && now >= playerState.freezeUntil) {
           playerState.freezeUntil = 0;
@@ -2143,6 +2402,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         setSpecialCooldownPct(Math.round((Math.max(0, playerState.specialCd - now) / 3500) * 100));
 
         playerState.group.position.set(playerState.x, playerState.y, playerState.z);
+        // Piscar clássico de invulnerabilidade ao reviver
+        playerState.group.visible = (now < playerState.invulnUntil && now >= playerState.hurtUntil && now >= playerState.knockdownUntil)
+          ? Math.floor(now / 75) % 2 === 0
+          : true;
         if (isGrabbed) {
           playerState.group.rotation.z = Math.PI;
         } else if (isKnockedDown) {
@@ -2189,14 +2452,31 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           if (!transitionBusy && activeWaveIdx === -1 && !clearedWaves.has(idx) && playerState.x >= w.triggerX) spawnWave(idx);
         });
 
-        // Atualiza projéteis (teias, tiros, granadas, facas ninjas e molotovs)
+        // Atualiza projéteis (teias, tiros, granadas, facas ninjas e molotovs — com física real contra objetos quebráveis!)
         for (let pi = projectiles.length - 1; pi >= 0; pi--) {
           const pr = projectiles[pi];
           pr.x += pr.vx * dt;
           if (pr.projKind === 'knife') {
             pr.mesh.rotation.z += (pr.vx >= 0 ? -1 : 1) * 14 * dt;
           }
-          if (pr.projKind === 'grenade' || pr.projKind === 'molotov') {
+
+          // Colisão imediata de itens arremessados (facas, molotovs, etc.) com objetos quebráveis do cenário!
+          const hitCrate = crates.find((cr) => {
+            if (cr.broken) return false;
+            const halfW = cr.kind === 'car' ? 2.4 : cr.kind === 'phone_booth' || cr.kind === 'crate' ? 0.92 : 0.78;
+            const halfZ = cr.kind === 'car' ? 1.3 : 0.98;
+            const topY = envRefs.floorHeightAt(cr.x) + (cr.kind === 'phone_booth' ? 2.35 : (cr.solidTop || 1.45));
+            return Math.abs(pr.x - cr.x) <= halfW && Math.abs(pr.z - cr.z) <= halfZ && pr.y <= topY + 0.35;
+          });
+          if (hitCrate) {
+            pr.dead = true;
+            if (pr.projKind === 'molotov') {
+              spawnGroundFirePatch(hitCrate.x, hitCrate.z);
+            }
+            damageOrBreakCrate(hitCrate, pr.damage, pr.vx >= 0 ? -1.4 : 1.4, true);
+          }
+
+          if (!pr.dead && (pr.projKind === 'grenade' || pr.projKind === 'molotov')) {
             pr.y += pr.vy * dt;
             pr.vy -= 12 * dt;
             pr.mesh.rotation.z += 9 * dt;
@@ -2218,10 +2498,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 }
                 setPlayerHp(playerState.hp);
                 spawnFloat(`-${pr.damage} ${pr.projKind === 'molotov' ? '🔥' : '💥'}`, '#ef4444', new THREE.Vector3(playerState.x, 2.0, playerState.z), camera);
-                if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+                handlePlayerZeroHp(now);
               }
             }
-          } else if (pr.fromPlayer) {
+          } else if (!pr.dead && pr.fromPlayer) {
             const hitEn = enemies.find(en => !en.dead && en.koUntil === 0 && Math.abs(en.x - pr.x) < 0.85 && Math.abs(en.z - pr.z) < 0.9 && Math.abs(en.y - pr.y) < 1.5);
             if (hitEn) {
               pr.dead = true;
@@ -2229,6 +2509,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               hitEn.hp = Math.max(0, hitEn.hp - res.damage);
               hitEn.hurtUntil = now + 240;
               hitEn.vx = (pr.vx >= 0 ? 1 : -1) * 4.0;
+              awardArcadePoints(200, new THREE.Vector3(hitEn.x, hitEn.y + 1.8, hitEn.z), camera);
               spawnSpark(hitEn.x, hitEn.y + 1.1, hitEn.z, 0xe2e8f0);
               spawnFloat(`🔪 -${res.damage}`, '#facc15', new THREE.Vector3(hitEn.x, hitEn.y + 2.0, hitEn.z), camera);
               if (hitEn.isBoss || enemies.every(o => o.dead || !o.isBoss)) {
@@ -2236,7 +2517,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               }
               if (hitEn.hp <= 0) { hitEn.koUntil = now + 450; hitEn.vx = (pr.vx >= 0 ? 1 : -1) * 7.5; }
             }
-          } else if (Math.abs(playerState.x - pr.x) < 0.78 && Math.abs(playerState.z - pr.z) < 0.82 && Math.abs(playerState.y - pr.y) < 1.3 && now >= playerState.invulnUntil) {
+          } else if (!pr.dead && Math.abs(playerState.x - pr.x) < 0.78 && Math.abs(playerState.z - pr.z) < 0.82 && Math.abs(playerState.y - pr.y) < 1.3 && now >= playerState.invulnUntil) {
             pr.dead = true;
             playerState.hp = Math.max(0, playerState.hp - pr.damage);
             playerState.hurtUntil = now + 260;
@@ -2286,7 +2567,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               new THREE.Vector3(playerState.x, 2.0, playerState.z),
               camera
             );
-            if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+            handlePlayerZeroHp(now);
           }
           pr.mesh.position.set(pr.x, pr.y, pr.z);
           if (pr.dead || pr.x < cameraLockMinX - 8 || pr.x > cameraLockMaxX + 8) {
@@ -2360,7 +2641,19 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               scene.remove(en.group);
               scene.remove(en.shadow);
               try { en.skinViewer?.dispose?.(); } catch { /* noop */ }
-              setKillsCount(k => k + 1);
+              killsRef.current += 1;
+              setKillsCount(killsRef.current);
+
+              // Pontuação proporcional à dificuldade do inimigo derrotado (baseado no Final Fight!)
+              const koPoints = en.isBoss
+                ? (15000 + stageIdxNum * 5000)
+                : (en.isSubBoss || en.moveProfile === 'giant')
+                  ? 4500
+                  : (en.moveProfile === 'slash' || en.moveProfile === 'rusher' || en.moveProfile === 'ninja_knife' || en.moveProfile === 'ninja_fire' || en.moveProfile === 'agile')
+                    ? 2400
+                    : 1200;
+              awardArcadePoints(koPoints, new THREE.Vector3(en.x, en.y + 1.8, en.z), camera);
+              spawnFloat(`+${koPoints.toLocaleString('pt-BR')} PTS`, '#fde047', new THREE.Vector3(en.x, en.y + 2.35, en.z), camera);
 
               // 1) Drops configurados na guia Drops do monstro (obedecendo % exata e min..max!)
               if (en.drops && en.drops.length > 0) {
@@ -2454,7 +2747,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               shakeUntil = now + 200;
               spawnSpark(playerState.x, playerState.y + 1.0, playerState.z, 0xf97316);
               spawnFloat(`-${hit.damage} 💥 DERRUBADO!`, '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
-              if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+              handlePlayerZeroHp(now);
             }
           } else if (!isEnemyFrozen && now >= en.hurtUntil && en.y <= enGroundY + 0.05) {
             const dx = playerState.x - en.x;
@@ -2500,9 +2793,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               }
             }
 
-            // Andore / Gordinho: Investida surpresa cruzando a arena!
-            const canLongDash = (en.moveProfile === 'rusher' || (en.moveProfile === 'giant' && !en.isBoss))
-              && !en.transformedAnimal && Math.abs(dx) > 3.2 && Math.abs(dx) < 8.5 && Math.abs(dz) < 1.0 && now >= en.attackCdUntil && Math.random() < 0.55;
+            // Andore / Gordinho / Sodom (Estágio 2): Investida surpresa cruzando a arena!
+            const isSodomBoss = en.isBoss && stageId === 'stage2_subway';
+            const canLongDash = (en.moveProfile === 'rusher' || (en.moveProfile === 'giant' && !en.isBoss) || isSodomBoss)
+              && !en.transformedAnimal && Math.abs(dx) > 3.0 && Math.abs(dx) < 11.5 && Math.abs(dz) < 1.15 && now >= en.attackCdUntil && Math.random() < (isSodomBoss ? 0.72 : 0.55);
 
             if (canPiledriver) {
               en.facing = dx >= 0 ? 1 : -1;
@@ -2528,17 +2822,22 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 shakeUntil = performance.now() + 300;
                 spawnSpark(playerState.x, envRefs.floorHeightAt(playerState.x) + 0.4, playerState.z, 0xfacc15);
                 spawnFloat(`💥 -${pdmg} PILÃO!`, '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.0, playerState.z), camera);
-                if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+                handlePlayerZeroHp(performance.now());
               }, 700);
             } else if (canLongDash) {
               en.facing = dx >= 0 ? 1 : -1;
-              en.plannedMove = en.moveProfile === 'giant' ? 'belly_charge' : 'headbutt';
-              en.dashVx = en.facing * 8.4;
-              en.dashUntil = now + 580;
+              en.plannedMove = isSodomBoss ? 'weapon_swing' : (en.moveProfile === 'giant' ? 'belly_charge' : 'headbutt');
+              en.dashVx = en.facing * (isSodomBoss ? 11.2 : 8.4);
+              en.dashUntil = now + (isSodomBoss ? 640 : 580);
               en.attackAnimStart = now;
-              en.attackAnimUntil = now + 580;
-              en.attackCdUntil = now + 1350;
-              spawnFloat(en.moveProfile === 'giant' ? '💢 BARRIGADA EM CORRIDA!' : '💥 CABEÇADA EM DISPARADA!', '#fb923c', new THREE.Vector3(en.x, en.y + 2.4, en.z), camera);
+              en.attackAnimUntil = now + (isSodomBoss ? 640 : 580);
+              en.attackCdUntil = now + (isSodomBoss ? 1150 : 1350);
+              spawnFloat(
+                isSodomBoss ? '⚔️ INVESTIDA KATANA DO SODOM!' : (en.moveProfile === 'giant' ? '💢 BARRIGADA EM CORRIDA!' : '💥 CABEÇADA EM DISPARADA!'),
+                isSodomBoss ? '#2dd4bf' : '#fb923c',
+                new THREE.Vector3(en.x, en.y + 2.4, en.z),
+                camera
+              );
             } else if (canRanged && Math.random() < (en.moveProfile === 'ninja_fire' || en.moveProfile === 'ninja_knife' ? 0.85 : 0.5) && en.windupUntil === 0) {
               en.facing = dx >= 0 ? 1 : -1;
               en.isRangedShot = true;
@@ -2703,7 +3002,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                   spawnSpark(playerState.x, playerState.y + 1.15, playerState.z, 0xef4444);
                   spawnFloat(`-${hit.damage}${knocksDown ? ' 💥 DERRUBADO!' : ''}`, '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.0, playerState.z), camera);
                   if (en.damageEffect && en.damageEffect !== 'none') setStatusMessage(`Atingido por ${en.damageEffect.toUpperCase()}!`);
-                  if (playerState.hp <= 0) { finished = true; setGameState('defeat'); }
+                  handlePlayerZeroHp(now);
                 }
               }
             }
@@ -2826,6 +3125,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             scene.remove(dr.obj);
             if (dr.kind === 'weapon' && dr.weaponKind) {
               // Guarda arma principal nas costas e equipa a arma de rua temporária (nunca entra na mochila)
+              awardArcadePoints(300, new THREE.Vector3(dr.x, dr.y + 0.65, dr.z), camera);
               sheathPlayerMainWeapon(playerState.playerObj, playerState.isLeftHanded, true);
               playerState.tempWeapon = dr.weaponKind;
               playerState.tempWeaponUses = WEAPON_META[dr.weaponKind].uses;
@@ -2835,6 +3135,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             } else if (dr.kind === 'coin') {
               playCoinCollect(dr.soundUrl || activeCoinModel?.coinSoundUrl);
               setCoinsCollected(c => c + dr.value);
+              awardArcadePoints(500 + dr.value * 10, new THREE.Vector3(dr.x, dr.y + 0.6, dr.z), camera);
               spawnFloat(dr.label, '#facc15', new THREE.Vector3(dr.x, dr.y + 0.6, dr.z), camera);
               if (userData?.uid) {
                 supabase.rpc('collect_combat_coin', { p_student_id: userData.uid, p_value: dr.value }).then(({ data }: any) => {
@@ -2848,9 +3149,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               else playPotionDrinkSound();
               playerState.hp = Math.min(playerState.maxHp, playerState.hp + dr.value);
               setPlayerHp(playerState.hp);
+              awardArcadePoints(dr.healTier === 'elixir' ? 1000 : 500, new THREE.Vector3(dr.x, dr.y + 0.6, dr.z), camera);
               spawnFloat(dr.label, '#22c55e', new THREE.Vector3(dr.x, dr.y + 0.6, dr.z), camera);
             } else if (dr.kind === 'item' && dr.itemData) {
               playCoinCollect(activeCoinModel?.coinSoundUrl);
+              awardArcadePoints(1000, new THREE.Vector3(dr.x, dr.y + 0.65, dr.z), camera);
               spawnFloat(`🎁 ${dr.label}`, '#38bdf8', new THREE.Vector3(dr.x, dr.y + 0.65, dr.z), camera);
               setStatusMessage(`🎁 Drop obtido: ${dr.label}!`);
               if (userData?.uid) {
@@ -2940,6 +3243,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         const exGroundY = envRefs.floorHeightAt(playerState.x);
         playerState.y = exGroundY;
         playerState.group.position.set(playerState.x, playerState.y, playerState.z);
+        // Piscar clássico de invulnerabilidade ao reviver
+        playerState.group.visible = (now < playerState.invulnUntil && now >= playerState.hurtUntil && now >= playerState.knockdownUntil)
+          ? Math.floor(now / 75) % 2 === 0
+          : true;
         playerState.group.rotation.z = 0;
         playerShadow.position.set(playerState.x, exGroundY + 0.02, playerState.z);
         if (playerState.playerObj) {
@@ -3000,10 +3307,21 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           <Swords size={18} /> MODO ARCADE 3D
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowRankingModal(true)}
+            title="Ver Ranking de Pontuação do Arcade"
+            style={{ background: 'rgba(245, 158, 11, 0.16)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '8px', color: '#fbbf24', padding: '0.25rem 0.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.76rem', fontWeight: 'bold' }}
+          >
+            <Trophy size={14} /> Ranking
+          </button>
           <select
             value={stageId}
-            onChange={(e) => setStageId(e.target.value as ArcadeStageId)}
+            onChange={(e) => {
+              const nextSt = e.target.value as ArcadeStageId;
+              if (nextSt === 'stage1_streets') resetArcadeSessionStats();
+              setStageId(nextSt);
+            }}
             style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', padding: '0.25rem 0.5rem', fontSize: '0.78rem', fontWeight: 'bold' }}
           >
             {CAMPAIGN_ORDER.map(s => (
@@ -3011,7 +3329,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             ))}
           </select>
           <button
-            onClick={() => setRunSeed(s => s + 1)}
+            onClick={() => {
+              if (stageId === 'stage1_streets') resetArcadeSessionStats();
+              setRunSeed(s => s + 1);
+            }}
             title="Reiniciar Estágio"
             style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '8px', color: '#e2e8f0', padding: '0.25rem 0.55rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem' }}
           >
@@ -3037,12 +3358,14 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           );
         })}
 
-        {/* HUD Superior Esquerdo */}
-        <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 10, background: 'rgba(10, 12, 22, 0.82)', backdropFilter: 'blur(6px)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: '12px', padding: '0.55rem 0.8rem', minWidth: '250px', pointerEvents: 'none' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-            <span style={{ fontWeight: '900', fontSize: '0.82rem', color: '#fbbf24' }}>{userData?.name?.split(' ')[0] || 'Herói'}</span>
-            <span style={{ fontSize: '0.72rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Heart size={12} fill="#ef4444" color="#ef4444" /> {maxHearts} ({playerHp}/{playerMaxHp} HP)
+        {/* HUD Superior Esquerdo estilo Final Fight: NOME=VIDAS + PONTUAÇÃO acima da Barra de HP */}
+        <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 10, background: 'rgba(10, 12, 22, 0.85)', backdropFilter: 'blur(6px)', border: '1px solid rgba(251,191,36,0.45)', borderRadius: '12px', padding: '0.55rem 0.85rem', minWidth: '286px', pointerEvents: 'none' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.85rem', marginBottom: '0.32rem', fontFamily: 'monospace' }}>
+            <span style={{ fontWeight: '900', fontSize: '0.95rem', color: extraLives === 0 ? '#f87171' : '#f8fafc', textShadow: '0 2px 0 #1e3a8a, 0 3px 6px #000', letterSpacing: '0.5px' }}>
+              {hudPlayerName}<span style={{ color: extraLives === 0 ? '#ef4444' : '#facc15' }}>={extraLives}</span>
+            </span>
+            <span style={{ fontWeight: '900', fontSize: '1.05rem', color: '#fef08a', textShadow: '0 2px 0 #854d0e, 0 3px 6px #000', letterSpacing: '1.2px' }}>
+              {String(score).padStart(6, '0')}
             </span>
           </div>
           <div style={{ position: 'relative', height: '14px', background: prevBarColor, borderRadius: '7px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.3)' }}>
@@ -3053,7 +3376,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.35rem', fontSize: '0.7rem', color: '#cbd5e1' }}>
+          <div style={{ display: 'flex', gap: '0.65rem', marginTop: '0.35rem', fontSize: '0.69rem', color: '#cbd5e1', flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Heart size={11} fill="#ef4444" color="#ef4444" /> {playerHp}/{playerMaxHp}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Swords size={12} color="#f87171" /> {playerAttackPower}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Shield size={12} color="#60a5fa" /> {playerDefensePower}</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Coins size={12} color="#facc15" /> {coinsCollected}</span>
@@ -3231,17 +3555,40 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         />
 
         {gameState !== 'playing' && (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(5, 8, 18, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div className="glass-panel" style={{ padding: '2rem', maxWidth: '400px', width: '90%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
-              {gameState === 'victory' ? <Trophy size={48} color="#fbbf24" /> : <Sparkles size={48} color="#ef4444" />}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(5, 8, 18, 0.88)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="glass-panel" style={{ padding: '2rem', maxWidth: '430px', width: '92%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.95rem', alignItems: 'center' }}>
+              {gameState === 'victory' ? <Trophy size={50} color="#fbbf24" /> : <Sparkles size={48} color="#ef4444" />}
               <h2 style={{ margin: 0, color: gameState === 'victory' ? '#fbbf24' : '#ef4444' }}>
-                {gameState === 'victory' ? 'CAMPANHA FINALIZADA!' : 'VOCÊ CAIU EM COMBATE!'}
+                {gameState === 'victory' ? 'CAMPANHA FINALIZADA!' : 'GAME OVER — FIM DAS CHANCES!'}
               </h2>
-              <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.9rem' }}>
-                Abates: <strong>{killsCount}</strong> · Moedas coletadas: <strong style={{ color: '#facc15' }}>{coinsCollected}</strong>
-              </p>
+              <div style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(250, 204, 21, 0.35)', borderRadius: '12px', padding: '0.75rem 1.1rem', width: '100%' }}>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '1px' }}>PONTUAÇÃO FINAL</div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#fde047', fontFamily: 'monospace' }}>
+                  {score.toLocaleString('pt-BR')} PTS
+                </div>
+                <div style={{ fontSize: '0.84rem', color: '#cbd5e1', marginTop: '0.25rem' }}>
+                  Abates: <strong>{killsCount}</strong> · Moedas coletadas: <strong style={{ color: '#facc15' }}>{coinsCollected}</strong>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowRankingModal(true)}
+                className="login-btn"
+                style={{ width: '100%', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.25))', border: '1px solid rgba(245, 158, 11, 0.65)', color: '#fbbf24', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+              >
+                <Trophy size={18} /> Ver Ranking de Pontos
+              </button>
+
               <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
-                <button onClick={() => { setStageId('stage1_streets'); setRunSeed(s => s + 1); }} className="login-btn" style={{ flex: 1, justifyContent: 'center', background: 'var(--gold-primary)', color: '#000', fontWeight: 'bold' }}>
+                <button
+                  onClick={() => {
+                    resetArcadeSessionStats();
+                    setStageId('stage1_streets');
+                    setRunSeed(s => s + 1);
+                  }}
+                  className="login-btn"
+                  style={{ flex: 1, justifyContent: 'center', background: 'var(--gold-primary)', color: '#000', fontWeight: 'bold' }}
+                >
                   Jogar Novamente
                 </button>
                 <button onClick={onExit} className="login-btn" style={{ flex: 1, justifyContent: 'center', background: 'rgba(255,255,255,0.1)', color: '#fff' }}>
@@ -3251,6 +3598,15 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             </div>
           </div>
         )}
+
+        <ArcadeScoreRankingModal
+          isOpen={showRankingModal}
+          onClose={() => setShowRankingModal(false)}
+          tenantId={userData?.tenantId || (userData as any)?.tenant_id || null}
+          currentUserId={userData?.uid}
+          currentSessionScore={score}
+          currentEquippedItems={equippedItems}
+        />
       </div>
     </div>
   );
