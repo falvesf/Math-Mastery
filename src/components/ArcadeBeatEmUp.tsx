@@ -479,6 +479,12 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
   const hudPlayerName = getArcadeHudPlayerName(userData);
   const [waveBanner, setWaveBanner] = useState<string>('');
   const [goArrow, setGoArrow] = useState(false);
+  const [goFingerPhase, setGoFingerPhase] = useState(false);
+  const [isMobileArcade, setIsMobileArcade] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+    return isTouch || window.innerWidth < 1024;
+  });
   const [bossHud, setBossHud] = useState<{ name: string; hp: number; maxHp: number; barSize: number } | null>(null);
   const [bonusTimerSec, setBonusTimerSec] = useState<number | null>(null);
   const [enemyBars, setEnemyBars] = useState<EnemyHudBar[]>([]);
@@ -496,10 +502,35 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
   const [runSeed, setRunSeed] = useState(1);
 
   const keysRef = useRef<Record<string, boolean>>({});
+  const joyMoveRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const joyBaseRef = useRef<HTMLDivElement>(null);
+  const joyKnobRef = useRef<HTMLDivElement>(null);
+  const joyTouchIdRef = useRef<number | null>(null);
   const attackQueuedRef = useRef(false);
   const kickQueuedRef = useRef(false);
   const specialQueuedRef = useRef(false);
   const jumpQueuedRef = useRef(false);
+
+  useEffect(() => {
+    if (!goArrow) {
+      setGoFingerPhase(false);
+      return;
+    }
+    setGoFingerPhase(false);
+    const id = window.setInterval(() => {
+      setGoFingerPhase(prev => !prev);
+    }, 460);
+    return () => window.clearInterval(id);
+  }, [goArrow]);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+      setIsMobileArcade(isTouch || window.innerWidth < 1024);
+    };
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const rawDistStats = userData?.distributedStats || (userData as any)?.distributed_stats;
   const totalStats = calculateTotalStats(equippedItems, rawDistStats);
@@ -510,6 +541,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
   const calculatedRankIndex = Math.max(0, activeRankList.findIndex(r => r.name === currentRankObj.name));
   const maxHearts = Math.max(3, 3 + Math.floor(calculatedRankIndex / 2)) + Math.floor((totalStats.vitality || 0) / 30);
   const computedMaxHp = maxHearts * HP_PER_HEART;
+  const bareHandsAttackPower = Math.max(18, 18 + (Number(rawDistStats?.attack) || 0));
   const playerAttackPower = Math.max(18, 18 + totalStats.attack);
   const playerDefensePower = Math.max(0, totalStats.defense);
   const equippedEffectInfo = getEquippedDamageEffectInfo(equippedItems);
@@ -2099,6 +2131,13 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
       const groundYHere = envRefs.floorHeightAt(playerState.x);
       const isAir = playerState.y > groundYHere + 0.12 || playerState.vy > 1.2;
+
+      if (isSpecial && playerState.hp < playerState.maxHp * 0.25) {
+        setStatusMessage('⚠️ HP abaixo de 25%: Golpe Especial indisponível!');
+        spawnFloat('⚠️ HP < 25%!', '#f87171', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
+        return;
+      }
+
       const activeTempWeapon = !isSpecial && !isKick ? playerState.tempWeapon : null;
 
       if (!isSpecial && !isAir) {
@@ -2161,16 +2200,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         shockwaveMesh.position.set(playerState.x, groundYHere + 0.08, playerState.z);
         shockwaveMesh.scale.setScalar(0.25);
         (shockwaveMesh.material as THREE.MeshBasicMaterial).opacity = 0.9;
-        shakeUntil = now + 180;
+        shakeUntil = now + 220;
       } else {
         const stepFwd = pose === 'flying_kick' ? 1.0 : (isKick ? 0.45 : 0.25);
         playerState.x = Math.max(cameraLockMinX, Math.min(cameraLockMaxX, playerState.x + playerState.facing * stepFwd));
       }
 
       const wMeta = activeTempWeapon ? WEAPON_META[activeTempWeapon] : null;
-      const reachX = (isSpecial ? 3.2 : (pose === 'flying_kick' ? 3.0 : isKick ? 2.85 : 2.5)) + (wMeta?.reachBonus || 0);
-      const reachZ = isSpecial ? 2.3 : 1.55;
+      const reachX = (isSpecial ? 3.65 : (pose === 'flying_kick' ? 3.05 : isKick ? 2.85 : 2.5)) + (wMeta?.reachBonus || 0);
+      const reachZ = isSpecial ? 2.55 : 1.55;
       let hitAnyWithWeapon = false;
+      let specialHitEnemies = 0;
 
       enemies.forEach((en) => {
         if (en.dead || en.koUntil > 0 || en.bossRetreatPhase !== 'none' || now < en.retreatUntil) return;
@@ -2179,10 +2219,25 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         const inFront = isSpecial ? Math.abs(dx) <= reachX : (dx * playerState.facing >= -0.6 && Math.abs(dx) <= reachX);
         if (inFront && dz <= reachZ) {
           hitAnyWithWeapon = true;
-          const mult = isSpecial ? 1.85 : (pose === 'flying_kick' || pose === 'acro_kick' ? 1.5 : (isKick ? 1.3 : (playerState.comboStep === 3 ? 1.45 : 1.0)));
+          if (isSpecial) specialHitEnemies++;
+          const equippedBase = playerAttackPower + (wMeta?.dmgBonus || 0);
+          let attackPowerUsed: number;
+          if (isSpecial) {
+            // Golpe especial: ataque equipado * 1.7
+            attackPowerUsed = Math.round(equippedBase * 1.7);
+          } else if (pose === 'flying_kick') {
+            // Voadora (Pulo + Chute / Ataque Aéreo): mais forte que o chute normal e que um item comum!
+            attackPowerUsed = Math.max(Math.round(bareHandsAttackPower * 1.75), Math.round(equippedBase * 1.32));
+          } else if (isKick) {
+            // Chute no chão: mais forte que mãos vazias (e que madeira +0), porém superado por armas forjadas/superiores
+            attackPowerUsed = Math.round(bareHandsAttackPower * 1.28 + 4);
+          } else {
+            const comboMult = playerState.comboStep === 3 ? 1.32 : playerState.comboStep === 2 ? 1.12 : 1.0;
+            attackPowerUsed = Math.round(equippedBase * comboMult);
+          }
+
           const isCrit = isSpecial || playerState.comboStep === 3 || pose === 'acro_kick' || pose === 'flying_kick' || Math.random() * 100 < 12;
-          const rawAtk = playerAttackPower + (wMeta?.dmgBonus || 0);
-          const res = calculatePlayerHitDamage(Math.round(rawAtk * mult), en.defense, en.evasion, isCrit);
+          const res = calculatePlayerHitDamage(attackPowerUsed, en.defense, en.evasion, isCrit);
           if (res.isEvasion) {
             spawnFloat('Esquiva!', '#94a3b8', new THREE.Vector3(en.x, 2.0, en.z), camera);
             return;
@@ -2195,14 +2250,28 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           en.hitStunCount++;
           const counterThreshold = (en.isBoss || en.moveProfile === 'giant' || en.isSubBoss || en.moveProfile === 'slash') ? 3 : 4;
 
-          if (en.hp > 0 && now >= en.freezeUntil && en.hitStunCount >= counterThreshold && !isSpecial) {
+          const pushSign = dx >= 0 ? 1 : -1;
+          if (isSpecial) {
+            // Dispersa todo o grupo amontoado dentro do raio jogando-os para trás derrubados!
+            en.hitStunCount = 0;
+            en.windupUntil = 0;
+            en.dashUntil = 0;
+            en.knockdownUntil = now + 720;
+            en.hurtUntil = now + 780;
+            en.vy = 4.8;
+            en.vx = pushSign * 7.8;
+          } else if (pose === 'flying_kick') {
+            en.hurtUntil = now + 380;
+            en.windupUntil = 0;
+            en.vx = pushSign * 6.4;
+          } else if (en.hp > 0 && now >= en.freezeUntil && en.hitStunCount >= counterThreshold) {
             en.hitStunCount = 0;
             en.hurtUntil = 0;
             en.attackCdUntil = now + 180;
           } else {
             en.hurtUntil = now + (activeTempWeapon === 'pipe' || isKick ? 340 : 240);
             en.windupUntil = 0;
-            en.vx = (dx >= 0 ? 1 : -1) * (isSpecial || playerState.comboStep === 3 || isKick || activeTempWeapon === 'pipe' ? 6.0 : 2.8);
+            en.vx = pushSign * (playerState.comboStep === 3 || isKick || activeTempWeapon === 'pipe' ? 5.6 : 2.8);
           }
 
           if (isCrit) shakeUntil = now + 130;
@@ -2228,10 +2297,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             setBossHud(en.hp > 0 ? { name: en.name, hp: en.hp, maxHp: en.maxHp, barSize: en.barSize } : null);
           }
           if (en.hp <= 0) {
-            triggerEnemyKo(en, now, (dx >= 0 ? 1 : -1) * 7.2);
+            triggerEnemyKo(en, now, pushSign * 7.2);
           }
         }
       });
+
+      if (isSpecial && specialHitEnemies > 0) {
+        const hpDrain = Math.max(1, Math.round(playerState.maxHp * 0.10));
+        playerState.hp = Math.max(1, playerState.hp - hpDrain);
+        setPlayerHp(playerState.hp);
+        spawnFloat(`-${hpDrain} HP`, '#f472b6', new THREE.Vector3(playerState.x, playerState.y + 2.3, playerState.z), camera);
+      }
 
       if (hitAnyWithWeapon && activeTempWeapon) {
         playerState.tempWeaponUses--;
@@ -2752,6 +2828,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             if (keysRef.current['d'] || keysRef.current['arrowright']) moveX += 1;
             if (keysRef.current['w'] || keysRef.current['arrowup']) moveZ -= 1;
             if (keysRef.current['s'] || keysRef.current['arrowdown']) moveZ += 1;
+            if (Math.abs(joyMoveRef.current.x) > 0.15) moveX += joyMoveRef.current.x;
+            if (Math.abs(joyMoveRef.current.y) > 0.15) moveZ += joyMoveRef.current.y;
           }
 
           if (isWebTrapped && (moveX !== 0 || moveZ !== 0 || jumpQueuedRef.current)) {
@@ -2768,7 +2846,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             moveX = 0; moveZ = 0;
           }
 
-          if (moveX !== 0) playerState.facing = moveX > 0 ? 1 : -1;
+          if (Math.abs(moveX) > 0.08) playerState.facing = moveX > 0 ? 1 : -1;
           const playerSlowMul = (now < playerState.poisonUntil ? 0.65 : 1.0) * (playerState.webStacks === 1 ? 0.58 : 1.0);
           // Velocidade de caminhada cadenciada e tática estilo Final Fight (4.55 m/s)
           const speed = 4.55 * playerSlowMul;
@@ -2777,23 +2855,41 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             playerState.x += playerState.knockbackVx * dt;
             playerState.knockbackVx *= Math.pow(0.08, dt);
           } else if (moveX !== 0 || moveZ !== 0) {
-            playerState.x += (moveX / len) * speed * dt;
-            playerState.z += (moveZ / len) * (speed * 0.74) * dt;
+            const norm = Math.min(1, len);
+            playerState.x += (moveX / len) * speed * norm * dt;
+            playerState.z += (moveZ / len) * (speed * 0.74) * norm * dt;
           }
           playerState.x = Math.max(cameraLockMinX, Math.min(cameraLockMaxX, playerState.x));
           playerState.z = Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, playerState.z));
 
           const baseGroundY = envRefs.floorHeightAt(playerState.x);
           let groundY = baseGroundY;
+          // Colisão sólida com objetos quebráveis: bloqueia passagem lateral/frontal no chão,
+          // mas permite pular e subir em cima quando estiver acima do topo!
           crates.forEach((cr) => {
-            if (cr.broken || !cr.solidTop) return;
-            if (Math.abs(playerState.x - cr.x) < 0.72 && Math.abs(playerState.z - cr.z) < 0.65) {
-              const topY = envRefs.floorHeightAt(cr.x) + cr.solidTop;
-              if (playerState.y >= topY - 0.36 && playerState.vy <= 0.1) {
+            if (cr.broken) return;
+            const halfW = cr.kind === 'car' ? 2.3 : cr.kind === 'phone_booth' ? 0.85 : cr.kind === 'cone' ? 0.38 : 0.68;
+            const halfZ = cr.kind === 'car' ? 1.15 : cr.kind === 'cone' ? 0.38 : 0.62;
+            const topHeight = cr.solidTop || (cr.kind === 'car' ? 1.4 : cr.kind === 'phone_booth' ? 2.25 : cr.kind === 'cone' ? 0.7 : 0.95);
+            const topY = envRefs.floorHeightAt(cr.x) + topHeight;
+            const dxC = playerState.x - cr.x;
+            const dzC = playerState.z - cr.z;
+            if (Math.abs(dxC) < halfW && Math.abs(dzC) < halfZ) {
+              if (playerState.y >= topY - 0.36 && playerState.vy <= 0.1 && (cr.solidTop || cr.kind === 'car' || cr.kind === 'crate' || cr.kind === 'barrel' || cr.kind === 'wood_barrel')) {
                 groundY = Math.max(groundY, topY);
+              } else if (playerState.y < topY - 0.16 && cr.kind !== 'cone') {
+                const penX = halfW - Math.abs(dxC);
+                const penZ = halfZ - Math.abs(dzC);
+                if (penX < penZ) {
+                  playerState.x = cr.x + (dxC >= 0 ? halfW : -halfW);
+                } else {
+                  playerState.z = cr.z + (dzC >= 0 ? halfZ : -halfZ);
+                }
               }
             }
           });
+          playerState.x = Math.max(cameraLockMinX, Math.min(cameraLockMaxX, playerState.x));
+          playerState.z = Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, playerState.z));
           if (canControl && !isWebTrapped && jumpQueuedRef.current && playerState.y <= groundY + 0.02) playerState.vy = 7.6;
           jumpQueuedRef.current = false;
           playerState.y += playerState.vy * dt;
@@ -3094,32 +3190,38 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         }
 
         const isAmbushWave = Boolean(activeWaveIdx >= 0 && stageWaves[activeWaveIdx]?.isAmbushWave);
-        const maxSimultaneousAttackers = isAmbushWave ? 2 : 1;
+        const maxSimultaneousAttackers = isAmbushWave ? 3 : 2;
         let currentAttackers = enemies.filter(e => !e.dead && e.koUntil === 0 && e.bossRetreatPhase === 'none' && e.windupUntil > now).length;
         const aliveEnemies = enemies.filter(e => !e.dead);
 
-        // IA Tática estilo Final Fight: no máximo 1 inimigo de cada lado engaja de perto (salvo emboscadas),
-        // enquanto os demais mantêm distância tática circulando pelo perímetro sem embolar em cima do jogador!
+        // IA Tática estilo Final Fight:
+        // - No grupo à frente do jogador, o inimigo mais próximo vem primeiro e os outros cercam pelos lados/cantos atrás dele.
+        // - Quem vier pelas costas do jogador e chegar perto pode atacar imediatamente sem esperar o grupo da frente!
+        // - Ninjas de Fogo nunca esperam; Roxies/Poisons e Holly Wood/El Gado também podem surpreender pelo ar/costas!
         const engagedEnemyIds = new Set<number>();
         const meleeCandidates = aliveEnemies
           .filter(e => e.koUntil === 0 && e.bossRetreatPhase === 'none' && !e.fleeingOffscreen && e.moveProfile !== 'ninja_fire')
           .sort((a, b) => Math.hypot(a.x - playerState.x, a.z - playerState.z) - Math.hypot(b.x - playerState.x, b.z - playerState.z));
-        let leftAssigned = 0;
-        let rightAssigned = 0;
-        const perSideLimit = isAmbushWave ? 2 : 1;
-        const totalEngageLimit = isAmbushWave ? 3 : 2;
+        let frontAssigned = 0;
+        let backAssigned = 0;
+        const frontLimit = isAmbushWave ? 2 : 1;
+        const backLimit = isAmbushWave ? 2 : 1;
         meleeCandidates.forEach((cand) => {
           if (cand.isBoss) {
             engagedEnemyIds.add(cand.id);
             return;
           }
-          if (engagedEnemyIds.size >= totalEngageLimit) return;
-          if (cand.x < playerState.x && leftAssigned < perSideLimit) {
+          const isBehindPlayer = (cand.x - playerState.x) * playerState.facing < -0.2;
+          const distToP = Math.hypot(cand.x - playerState.x, cand.z - playerState.z);
+          if (isBehindPlayer) {
+            // Inimigo que veio pelas costas e chegou primeiro/perto pode atacar!
+            if (backAssigned < backLimit || distToP < 2.6) {
+              engagedEnemyIds.add(cand.id);
+              backAssigned++;
+            }
+          } else if (frontAssigned < frontLimit) {
             engagedEnemyIds.add(cand.id);
-            leftAssigned++;
-          } else if (cand.x >= playerState.x && rightAssigned < perSideLimit) {
-            engagedEnemyIds.add(cand.id);
-            rightAssigned++;
+            frontAssigned++;
           }
         });
         if (engagedEnemyIds.size === 0 && meleeCandidates[0]) {
@@ -3401,32 +3503,40 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             en.closePlayerSince = 0;
           } else if (now < en.dashUntil && !isEnemyFrozen && !isEnemyKnockedDown) {
             isMoving = true;
-            // Se o inimigo correr com arma/investida (ex: Sodom), também acerta outros inimigos no caminho!
-            if (en.heldWeapon || (en.isBoss && stageId === 'stage2_subway')) {
+            // Golpes especiais em disparada (Cabeçada dos Gordinhos, Barrigada do Andore, Katana do Sodom, armas)
+            // acertam e DERRUBAM inclusive os aliados na frente!
+            const isSpecialDash = en.plannedMove === 'headbutt' || en.plannedMove === 'belly_charge' || Boolean(en.heldWeapon) || (en.isBoss && stageId === 'stage2_subway');
+            if (isSpecialDash) {
               aliveEnemies.forEach((other) => {
-                if (other.id === en.id || other.koUntil > 0 || other.bossRetreatPhase !== 'none' || now < other.hurtUntil) return;
-                if (Math.abs(other.x - en.x) < 1.25 && Math.abs(other.z - en.z) < 0.95) {
-                  const ffDmg = Math.max(18, Math.round(en.attack * 0.85));
+                if (other.id === en.id || other.koUntil > 0 || other.bossRetreatPhase !== 'none' || now < other.knockdownUntil) return;
+                if (Math.abs(other.x - en.x) < 1.35 && Math.abs(other.z - en.z) < 1.05) {
+                  const ffDmg = Math.max(22, Math.round(en.attack * 1.15));
                   other.hp = Math.max(0, other.hp - ffDmg);
-                  other.hurtUntil = now + 380;
-                  other.vx = en.facing * 4.8;
+                  other.knockdownUntil = now + 620;
+                  other.hurtUntil = now + 700;
+                  other.windupUntil = 0;
+                  other.dashUntil = 0;
+                  other.vy = 4.4;
+                  other.vx = en.facing * 5.6;
                   spawnSpark(other.x, other.y + 1.0, other.z, 0xfbbf24);
                   spawnFloat(`-${ffDmg}`, '#fbbf24', new THREE.Vector3(other.x, other.y + 2.0, other.z), camera);
-                  if (other.hp <= 0) triggerEnemyKo(other, now, en.facing * 6.5);
+                  checkAndStartBossRetreat(other, now);
+                  if (other.isBoss) setBossHud(other.hp > 0 ? { name: other.name, hp: other.hp, maxHp: other.maxHp, barSize: other.barSize } : null);
+                  if (other.hp <= 0) triggerEnemyKo(other, now, en.facing * 6.8);
                 }
               });
             }
             if (Math.abs(playerState.x - en.x) < 1.35 && Math.abs(playerState.z - en.z) < 1.0 && Math.abs(playerState.y - enGroundY) < 1.0 && now >= playerState.invulnUntil) {
               en.dashUntil = 0;
-              const dmgScale = (en.activeStatus === 'poison' ? 0.65 : 1.0) * 1.3;
+              const dmgScale = (en.activeStatus === 'poison' ? 0.65 : 1.0) * 1.48;
               const hit = calculateMonsterHitDamage(Math.round(en.attack * dmgScale), playerDefensePower, Math.random() < 0.2);
               playerState.hp = Math.max(0, playerState.hp - hit.damage);
-              playerState.knockdownUntil = now + 560;
-              playerState.getupUntil = now + 950;
+              playerState.knockdownUntil = now + 580;
+              playerState.getupUntil = now + 980;
               playerState.invulnUntil = now + 1300;
-              playerState.hurtUntil = now + 560;
-              playerState.vy = 4.2;
-              playerState.knockbackVx = en.facing * 3.8;
+              playerState.hurtUntil = now + 580;
+              playerState.vy = 4.5;
+              playerState.knockbackVx = en.facing * 4.2;
               setPlayerHp(playerState.hp);
               shakeUntil = now + 200;
               spawnSpark(playerState.x, playerState.y + 1.0, playerState.z, 0xf97316);
@@ -3450,12 +3560,13 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               : undefined;
 
             const flankSide = en.x >= playerState.x ? 1 : -1;
-            const wantsRangedStand = ((en.moveProfile === 'ninja_knife' || en.moveProfile === 'ninja_fire') && !en.heldWeapon && !en.transformedAnimal)
+            const wantsRangedStand = (en.moveProfile === 'ninja_fire' && en.fireShotsLeft > 0)
+              || (en.moveProfile === 'ninja_knife' && !en.heldWeapon && !en.transformedAnimal && Math.abs(dx) > 3.6)
               || (en.isBoss && stageId === 'stage3_westside' && Math.sin(now * 0.0011) > -0.2);
 
-            // Se não for a vez deste inimigo engajar de perto, ele guarda distância no perímetro (3.8m a 5.4m) circulando!
-            const perimeterDist = 3.85 + (idx % 3) * 0.8;
-            const desiredDist = wantsRangedStand ? 4.6 : (isEngagedUpClose ? 1.52 : perimeterDist);
+            // Grupo da frente: quem espera a vez cerca pelos lados/cantos atrás do atacante da frente (3.2m–4.8m)!
+            const perimeterDist = 3.35 + (idx % 3) * 0.68;
+            const desiredDist = wantsRangedStand ? 4.4 : (isEngagedUpClose ? 1.5 : perimeterDist);
             const targetX = nearWeapon
               ? nearWeapon.x
               : Math.max(cameraLockMinX + 0.6, Math.min(cameraLockMaxX - 0.6, playerState.x + flankSide * desiredDist));
@@ -3463,7 +3574,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               ? nearWeapon.z
               : isEngagedUpClose
                 ? playerState.z
-                : Math.max(STREET_Z_MIN + 0.25, Math.min(STREET_Z_MAX - 0.25, playerState.z + Math.sin(now * 0.0014 + en.id * 1.9) * 1.25));
+                : Math.max(STREET_Z_MIN + 0.25, Math.min(STREET_Z_MAX - 0.25, playerState.z + ((idx % 2 === 0 ? 1 : -1) * (1.05 + (idx % 3) * 0.35))));
 
             // Repulsão entre inimigos para evitar amontoamento em cima do jogador
             let sepX = 0;
@@ -3492,11 +3603,22 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             }
 
             const playerAirborne = playerState.y > enGroundY + 0.35;
+            const isBehindPlayerNow = (en.x - playerState.x) * playerState.facing < -0.25;
             const isEddieBoss = en.isBoss && stageId === 'stage3_westside';
             const isRolentoBoss = en.isBoss && stageId === 'stage4_industrial';
             const canBossOrConfigRanged = (isEddieBoss || isRolentoBoss || en.isSpider || en.attacksConfig?.ranged?.enabled) && Math.abs(dx) > (isEddieBoss ? 2.6 : 3.2);
+            // Ninjas de fogo NUNCA esperam vez; ninjas de faca arremessam à média distância
             const canNinjaThrow = (en.moveProfile === 'ninja_knife' || (en.moveProfile === 'ninja_fire' && en.fireShotsLeft > 0) || en.heldWeapon === 'knife') && Math.abs(dx) > 2.6;
-            const canRanged = !nearWeapon && !en.transformedAnimal && (canBossOrConfigRanged || canNinjaThrow) && Math.abs(dz) < 1.35 && now >= en.attackCdUntil;
+            const canRanged = !nearWeapon && !en.transformedAnimal && (canBossOrConfigRanged || canNinjaThrow) && (en.moveProfile === 'ninja_fire' || Math.abs(dz) < 1.35) && now >= en.attackCdUntil;
+
+            // Ataque Aéreo Surpresa (sem esperar vez! inclusive vindo pelas costas):
+            // - Holly Wood / El Gado (ninja_knife): pula por cima de cabeça para baixo com duas facas!
+            // - Roxy / Poison (agile): salto acrobático aéreo surpreendendo o jogador!
+            const canSurpriseAerial = (en.moveProfile === 'ninja_knife' || en.moveProfile === 'agile')
+              && !nearWeapon && !en.transformedAnimal && !en.heldWeapon
+              && Math.abs(dx) > 2.2 && Math.abs(dx) < 6.4 && Math.abs(dz) < 1.35
+              && now >= en.attackCdUntil && en.windupUntil === 0
+              && Math.random() < (isBehindPlayerNow ? 0.55 : 0.28);
 
             // Pilão justo do Andore: só ocorre se NÃO houver outros inimigos embolados atrapalhando o jogador e após contato próximo sustentado!
             const otherCrowdingPlayer = aliveEnemies.some(
@@ -3516,10 +3638,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               }
             }
 
+            // Investida especial: Gordinhos (Cabeçada derrubando todos na frente!), Andores (Barrigada), Sodom (Katana)
             const isSodomBoss = en.isBoss && stageId === 'stage2_subway';
-            const canLongDash = isEngagedUpClose && (en.moveProfile === 'rusher' || (en.moveProfile === 'giant' && !en.isBoss) || isSodomBoss)
-              && !en.transformedAnimal && Math.abs(dx) > 3.2 && Math.abs(dx) < 10.5 && Math.abs(dz) < 1.05 && now >= en.attackCdUntil
-              && Math.random() < (isSodomBoss ? 0.55 : 0.32);
+            const canLongDash = (isEngagedUpClose || isBehindPlayerNow) && (en.moveProfile === 'rusher' || (en.moveProfile === 'giant' && !en.isBoss) || isSodomBoss)
+              && !en.transformedAnimal && Math.abs(dx) > 3.0 && Math.abs(dx) < 10.5 && Math.abs(dz) < 1.1 && now >= en.attackCdUntil
+              && Math.random() < (isSodomBoss ? 0.55 : (en.moveProfile === 'rusher' ? 0.42 : 0.34));
 
             if (canPiledriver) {
               en.facing = dx >= 0 ? 1 : -1;
@@ -3537,7 +3660,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               playerState.vy = 8.4;
               setTimeout(() => {
                 if (disposed || finished || en.dead || performance.now() < en.freezeUntil) return;
-                const pdmg = calculateMonsterHitDamage(Math.round(en.attack * 1.45), playerDefensePower, false).damage;
+                const pdmg = calculateMonsterHitDamage(Math.round(en.attack * 1.6), playerDefensePower, false).damage;
                 playerState.hp = Math.max(0, playerState.hp - pdmg);
                 playerState.knockdownUntil = performance.now() + 650;
                 playerState.getupUntil = performance.now() + 1050;
@@ -3546,41 +3669,65 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 spawnSpark(playerState.x, envRefs.floorHeightAt(playerState.x) + 0.4, playerState.z, 0xfacc15);
                 spawnFloat(`-${pdmg}`, '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.0, playerState.z), camera);
                 handlePlayerZeroHp(performance.now());
+
+                // Impacto do Pilão do Andore também atinge e derruba aliados próximos!
+                const impactNow = performance.now();
+                enemies.forEach((ally) => {
+                  if (ally.dead || ally.id === en.id || ally.koUntil > 0 || ally.bossRetreatPhase !== 'none') return;
+                  if (Math.hypot(ally.x - en.x, ally.z - en.z) < 2.25) {
+                    const ffPiledriverDmg = Math.max(28, Math.round(en.attack * 1.35));
+                    ally.hp = Math.max(0, ally.hp - ffPiledriverDmg);
+                    ally.knockdownUntil = impactNow + 650;
+                    ally.hurtUntil = impactNow + 720;
+                    ally.vy = 4.6;
+                    ally.vx = (ally.x >= en.x ? 1 : -1) * 5.2;
+                    spawnFloat(`-${ffPiledriverDmg}`, '#fbbf24', new THREE.Vector3(ally.x, ally.y + 2.0, ally.z), camera);
+                    if (ally.hp <= 0) triggerEnemyKo(ally, impactNow, ally.vx);
+                  }
+                });
               }, 700);
             } else if (canLongDash) {
               en.facing = dx >= 0 ? 1 : -1;
               en.plannedMove = isSodomBoss ? 'weapon_swing' : (en.moveProfile === 'giant' ? 'belly_charge' : 'headbutt');
-              en.dashVx = en.facing * (isSodomBoss ? 8.8 : 6.6);
-              en.dashUntil = now + (isSodomBoss ? 680 : 620);
+              en.dashVx = en.facing * (isSodomBoss ? 9.2 : 7.4);
+              en.dashUntil = now + (isSodomBoss ? 680 : 640);
               en.attackAnimStart = now;
-              en.attackAnimUntil = now + (isSodomBoss ? 680 : 620);
-              en.attackCdUntil = now + (isSodomBoss ? 1650 : 2100);
-            } else if (canRanged && Math.random() < (en.moveProfile === 'ninja_fire' || isEddieBoss ? 0.82 : 0.48) && en.windupUntil === 0) {
+              en.attackAnimUntil = now + (isSodomBoss ? 680 : 640);
+              en.attackCdUntil = now + (isSodomBoss ? 1550 : 1950);
+            } else if (canSurpriseAerial) {
+              en.facing = dx >= 0 ? 1 : -1;
+              en.isRangedShot = false;
+              en.plannedMove = en.moveProfile === 'ninja_knife' ? 'acro_dive' : 'acro_kick';
+              en.lastMove = en.plannedMove;
+              en.isLungeSpecial = true;
+              en.windupStart = now;
+              en.windupUntil = now + 210;
+            } else if (canRanged && Math.random() < (en.moveProfile === 'ninja_fire' || isEddieBoss ? 0.92 : 0.52) && en.windupUntil === 0) {
               en.facing = dx >= 0 ? 1 : -1;
               en.isRangedShot = true;
               en.isLungeSpecial = false;
               en.plannedMove = 'throw';
               en.windupStart = now;
-              en.windupUntil = now + 340;
+              en.windupUntil = now + (en.moveProfile === 'ninja_fire' ? 220 : 320);
             } else if ((distToTarget > 0.48 || Math.hypot(sepX, sepZ) > 0.25) && en.windupUntil <= now) {
               en.facing = dx >= 0 ? 1 : -1;
-              const paceFactor = isEngagedUpClose ? 1.0 : 0.74;
+              const paceFactor = isEngagedUpClose ? 1.05 : 0.85;
               const spd = en.speed * speedMult * paceFactor * (nearWeapon ? 1.12 : 1.0);
               const moveVecX = (distToTarget > 0.1 ? (dtx / distToTarget) : 0) + sepX * 0.65;
               const moveVecZ = (distToTarget > 0.1 ? (dtz / distToTarget) : 0) + sepZ * 0.65;
               const mvLen = Math.hypot(moveVecX, moveVecZ) || 1;
               en.x += (moveVecX / mvLen) * spd * dt;
-              en.z = Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, en.z + (moveVecZ / mvLen) * (spd * 0.82) * dt));
+              en.z = Math.max(STREET_Z_MIN, Math.min(STREET_Z_MAX, en.z + (moveVecZ / mvLen) * (spd * 0.85) * dt));
               isMoving = true;
             } else if (
-              isEngagedUpClose &&
+              (isEngagedUpClose || isBehindPlayerNow) &&
               !nearWeapon &&
               Math.abs(dx) < (en.moveProfile === 'agile' || en.moveProfile === 'ninja_knife' || en.moveProfile === 'giant' ? 2.75 : 2.15) &&
-              Math.abs(dz) < 1.0 &&
+              Math.abs(dz) < 1.05 &&
               now >= en.attackCdUntil
             ) {
               en.facing = dx >= 0 ? 1 : -1;
-              if (en.windupUntil === 0 && currentAttackers < maxSimultaneousAttackers) {
+              if (en.windupUntil === 0 && (isBehindPlayerNow || currentAttackers < maxSimultaneousAttackers)) {
                 let nextMove: CombatPoseKind = 'punch';
                 let isSpecialAtk = false;
                 if (en.transformedAnimal) {
@@ -3593,8 +3740,14 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                   nextMove = (playerAirborne || en.lastMove !== 'acro_kick') ? 'acro_kick' : 'side_kick';
                   isSpecialAtk = nextMove === 'acro_kick';
                 } else if (en.moveProfile === 'slash') {
-                  nextMove = en.lastMove !== 'double_smash' ? 'double_smash' : 'side_kick';
-                  isSpecialAtk = nextMove === 'double_smash';
+                  // Slash & Axl: golpe especial raro é um chute lateral poderoso!
+                  if (Math.random() < 0.22) {
+                    nextMove = 'side_kick';
+                    isSpecialAtk = true;
+                  } else {
+                    nextMove = en.lastMove !== 'double_smash' ? 'double_smash' : 'punch';
+                    isSpecialAtk = nextMove === 'double_smash';
+                  }
                 } else if (en.moveProfile === 'giant') {
                   nextMove = (Math.abs(dx) > 1.7 || en.lastMove !== 'belly_charge') ? 'belly_charge' : 'double_smash';
                   isSpecialAtk = true;
@@ -3616,9 +3769,9 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 en.isRangedShot = false;
                 en.plannedMove = nextMove;
                 en.lastMove = nextMove;
-                en.isLungeSpecial = isSpecialAtk || (!!en.hasSpecial && Math.random() < 0.3);
+                en.isLungeSpecial = isSpecialAtk || (!!en.hasSpecial && Math.random() < 0.32);
                 en.windupStart = now;
-                en.windupUntil = now + (isSpecialAtk ? 380 : 290);
+                en.windupUntil = now + (isSpecialAtk ? 340 : 250);
                 currentAttackers++;
               }
             } else {
@@ -3628,9 +3781,9 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             if (en.windupUntil > 0 && now >= en.windupUntil) {
               en.windupUntil = 0;
               en.attackAnimStart = now;
-              const animDur = (en.plannedMove === 'acro_kick' || en.plannedMove === 'acro_dive' || en.plannedMove === 'belly_charge') ? 420 : 290;
+              const animDur = (en.plannedMove === 'acro_kick' || en.plannedMove === 'acro_dive' || en.plannedMove === 'belly_charge') ? 480 : 290;
               en.attackAnimUntil = now + animDur;
-              en.attackCdUntil = now + (en.isBoss ? 1350 : (en.moveProfile === 'agile' || en.transformedAnimal === 'coelho' ? 1250 : 1650));
+              en.attackCdUntil = now + (en.isBoss ? 1200 : (en.moveProfile === 'agile' || en.moveProfile === 'ninja_knife' || en.transformedAnimal === 'coelho' ? 1050 : 1450));
 
               if (en.isRangedShot) {
                 const poisonWeakMul = en.activeStatus === 'poison' ? 0.65 : 1.0;
@@ -3648,7 +3801,6 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 const hit = calculateMonsterHitDamage(Math.round(rawAtk * (isKnife ? 1.05 : 0.95)), playerDefensePower, false);
 
                 if (isEddieBurst) {
-                  // Eddie dispara rajadas de pistola que atravessam a rua e matam muitos de seus próprios capangas na frente!
                   [0, 160, 320].forEach((delayMs, shotIdx) => {
                     setTimeout(() => {
                       if (disposed || finished || en.dead || en.koUntil > 0 || en.bossRetreatPhase !== 'none') return;
@@ -3671,7 +3823,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                     en.x + en.facing * 0.65,
                     en.y + 1.2,
                     en.z,
-                    en.facing * (isKnife ? 9.6 : isMolotov ? 7.0 : 8.0),
+                    en.facing * (isKnife ? 10.2 : isMolotov ? 7.6 : 8.2),
                     hit.damage,
                     isMolotov ? 'burn' : isKnife ? 'bleed' : (en.isSpider ? 'web' : (en.damageEffect || 'none')),
                     projKind,
@@ -3689,39 +3841,47 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               } else {
                 const mv = en.plannedMove;
                 if (mv === 'belly_charge' || mv === 'headbutt') {
-                  en.vx = en.facing * 5.6;
-                } else if (mv === 'acro_kick' || mv === 'acro_dive') {
-                  en.vx = en.facing * 4.6;
-                  en.vy = 5.0;
+                  en.vx = en.facing * 6.4;
+                } else if (mv === 'acro_dive') {
+                  // Pula por cima do jogador de cabeça para baixo empunhando facas!
+                  en.vx = en.facing * 6.8;
+                  en.vy = 6.0;
+                } else if (mv === 'acro_kick') {
+                  en.vx = en.facing * 6.2;
+                  en.vy = 5.6;
                 } else {
-                  en.vx = en.facing * (en.isLungeSpecial ? 3.8 : 2.1);
+                  en.vx = en.facing * (en.isLungeSpecial ? 4.2 : 2.1);
                   if (en.isLungeSpecial && en.isBoss) en.vy = 3.4;
                 }
 
                 const atkClip = en.actions?.['attack'] || en.actions?.['bite'] || en.actions?.['hit'];
                 if (atkClip) { atkClip.reset().setLoop(THREE.LoopOnce, 1).play(); }
 
-                const hitRangeX = (mv === 'belly_charge' || mv === 'acro_dive' || mv === 'weapon_swing' ? 2.65 : en.isLungeSpecial ? 2.35 : 2.05);
-                const yTol = (mv === 'acro_kick' || mv === 'acro_dive') ? 1.8 : 1.05;
+                const hitRangeX = (mv === 'belly_charge' || mv === 'acro_dive' || mv === 'acro_kick' || mv === 'weapon_swing' ? 2.85 : en.isLungeSpecial ? 2.45 : 2.1);
+                const yTol = (mv === 'acro_kick' || mv === 'acro_dive') ? 2.0 : 1.05;
+                const isSpecialEnemyMove = mv === 'acro_dive' || mv === 'acro_kick' || mv === 'belly_charge' || mv === 'headbutt' || mv === 'double_smash' || (en.moveProfile === 'slash' && mv === 'side_kick') || Boolean(en.heldWeapon);
 
-                // Armas empunhadas pelos inimigos (faca, cano, espada) também atingem os próprios aliados na frente!
-                if (en.heldWeapon) {
-                  const wBonus = WEAPON_META[en.heldWeapon].dmgBonus;
+                // Golpes especiais dos inimigos e armas empunhadas também atingem seus aliados!
+                if (isSpecialEnemyMove) {
+                  const wBonus = en.heldWeapon ? WEAPON_META[en.heldWeapon].dmgBonus : 0;
                   aliveEnemies.forEach((ally) => {
                     if (ally.id === en.id || ally.koUntil > 0 || ally.bossRetreatPhase !== 'none') return;
                     const adx = ally.x - en.x;
                     const adz = Math.abs(ally.z - en.z);
-                    if (adx * en.facing >= -0.3 && Math.abs(adx) < hitRangeX && adz < 1.15) {
-                      const ffWepDmg = Math.max(16, Math.round(en.attack + wBonus * 0.8));
-                      ally.hp = Math.max(0, ally.hp - ffWepDmg);
-                      ally.hurtUntil = now + 340;
+                    if (adx * en.facing >= -0.4 && Math.abs(adx) < hitRangeX && adz < 1.2) {
+                      const ffMult = mv === 'acro_dive' ? 1.35 : mv === 'headbutt' || mv === 'belly_charge' ? 1.25 : 1.0;
+                      const ffDmg = Math.max(18, Math.round((en.attack + wBonus * 0.8) * ffMult));
+                      ally.hp = Math.max(0, ally.hp - ffDmg);
+                      ally.knockdownUntil = now + 560;
+                      ally.hurtUntil = now + 620;
                       ally.windupUntil = 0;
-                      ally.vx = en.facing * 4.5;
-                      if (en.heldWeapon === 'knife' || en.heldWeapon === 'sword') {
+                      ally.vy = 4.2;
+                      ally.vx = en.facing * 5.2;
+                      if (en.heldWeapon === 'knife' || en.heldWeapon === 'sword' || mv === 'acro_dive') {
                         spawnBloodDroplet(ally.x, ally.y + 1.0, ally.z);
                       }
                       spawnSpark(ally.x, ally.y + 1.1, ally.z, 0xfacc15);
-                      spawnFloat(`-${ffWepDmg}`, '#fbbf24', new THREE.Vector3(ally.x, ally.y + 2.0, ally.z), camera);
+                      spawnFloat(`-${ffDmg}`, '#fbbf24', new THREE.Vector3(ally.x, ally.y + 2.0, ally.z), camera);
                       checkAndStartBossRetreat(ally, now);
                       if (ally.isBoss) setBossHud(ally.hp > 0 ? { name: ally.name, hp: ally.hp, maxHp: ally.maxHp, barSize: ally.barSize } : null);
                       if (ally.hp <= 0) triggerEnemyKo(ally, now, en.facing * 6.5);
@@ -3742,12 +3902,22 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                   const rawAtk = Math.round(
                     ((en.attack * pigMul) + (en.heldWeapon ? Math.round(WEAPON_META[en.heldWeapon].dmgBonus * 0.7) : 0)) * poisonWeakMul
                   );
-                  const dmgMult = mv === 'acro_dive' ? 1.35 : (mv === 'double_smash' || mv === 'belly_charge' ? 1.25 : (en.isLungeSpecial ? 1.15 : 1.0));
+                  const dmgMult = mv === 'acro_dive'
+                    ? 1.55
+                    : (en.moveProfile === 'slash' && mv === 'side_kick')
+                      ? 1.65
+                      : (mv === 'acro_kick' || mv === 'headbutt' || mv === 'belly_charge' || mv === 'double_smash')
+                        ? 1.45
+                        : (en.isLungeSpecial ? 1.25 : 1.0);
                   const hit = calculateMonsterHitDamage(Math.round(rawAtk * dmgMult), playerDefensePower, isCrit);
                   playerState.hp = Math.max(0, playerState.hp - hit.damage);
                   setPlayerHp(playerState.hp);
 
-                  if (en.transformedAnimal === 'sapo') {
+                  if (mv === 'acro_dive') {
+                    playerState.bleedUntil = now + 4200;
+                    playerState.nextBleedTick = now + 900;
+                    spawnBloodDroplet(playerState.x, playerState.y + 0.85, playerState.z);
+                  } else if (en.transformedAnimal === 'sapo') {
                     playerState.poisonUntil = now + 4500;
                     playerState.nextPoisonTick = now + 900;
                   } else if (en.transformedAnimal === 'rato') {
@@ -3756,14 +3926,14 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                     spawnBloodDroplet(playerState.x, playerState.y + 0.85, playerState.z);
                   }
 
-                  const knocksDown = mv === 'belly_charge' || mv === 'double_smash' || mv === 'acro_dive' || mv === 'acro_kick' || mv === 'headbutt' || en.heldWeapon === 'pipe' || en.isBoss;
+                  const knocksDown = mv === 'belly_charge' || mv === 'double_smash' || mv === 'acro_dive' || mv === 'acro_kick' || mv === 'headbutt' || (en.moveProfile === 'slash' && mv === 'side_kick') || en.heldWeapon === 'pipe' || en.isBoss;
                   if (knocksDown) {
-                    playerState.knockdownUntil = now + 520;
-                    playerState.getupUntil = now + 900;
+                    playerState.knockdownUntil = now + 540;
+                    playerState.getupUntil = now + 920;
                     playerState.invulnUntil = now + 1250;
-                    playerState.hurtUntil = now + 520;
-                    playerState.vy = 3.8;
-                    playerState.knockbackVx = en.facing * 3.2;
+                    playerState.hurtUntil = now + 540;
+                    playerState.vy = 4.2;
+                    playerState.knockbackVx = en.facing * 3.8;
                   } else {
                     playerState.hurtUntil = now + 260;
                     playerState.invulnUntil = now + 480;
@@ -3782,6 +3952,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           } else if (en.skinPlayerObj) {
             en.skinPlayerObj.rotation.y = en.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
             en.skinPlayerObj.rotation.x = 0;
+            en.skinPlayerObj.rotation.z = 0;
             if (isEnemyKnockedDown) {
               en.group.rotation.z = -en.facing * (Math.PI / 2.1);
               applyCombatPose(en.skinPlayerObj, 'knockdown', 1);
@@ -3791,7 +3962,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 const dur = Math.max(1, en.attackAnimUntil - en.attackAnimStart);
                 const prog = (now - en.attackAnimStart) / dur;
                 applyCombatPose(en.skinPlayerObj, en.plannedMove, prog);
-                if (en.plannedMove === 'acro_kick' || en.plannedMove === 'acro_dive') {
+                if (en.plannedMove === 'acro_dive') {
+                  // Ataque aéreo de cabeça para baixo girando com facas!
+                  en.skinPlayerObj.rotation.z = Math.PI;
+                  en.skinPlayerObj.rotation.x = en.facing * prog * Math.PI * 2;
+                } else if (en.plannedMove === 'acro_kick') {
                   en.skinPlayerObj.rotation.x = en.facing * prog * Math.PI * 2;
                 }
               } else if (!isEnemyFrozen && now < en.hurtUntil) {
@@ -4257,49 +4432,57 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           )}
         </div>
 
-        {/* Sinalização GO! GO! GO! ➔ grande e piscante no meio da tela, igual ao Final Fight clássico! */}
+        {/* Sinalização clássica Final Fight alternando entre "GO!" e a Mãozinha apontando o caminho! */}
         {goArrow && (
           <div
             style={{
               position: 'absolute',
               top: '38%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
+              right: '10%',
+              transform: 'translateY(-50%)',
               zIndex: 14,
               pointerEvents: 'none',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.65rem',
-              background: 'rgba(10, 12, 22, 0.78)',
+              justifyContent: 'center',
+              minWidth: '150px',
+              minHeight: '78px',
+              background: 'rgba(10, 12, 22, 0.82)',
               border: '3px solid #facc15',
               borderRadius: '16px',
-              padding: '0.65rem 1.65rem',
-              boxShadow: '0 0 32px rgba(250, 204, 21, 0.85), inset 0 0 14px rgba(239, 68, 68, 0.45)',
-              animation: 'pulse 0.65s infinite alternate',
+              padding: '0.55rem 1.35rem',
+              boxShadow: '0 0 28px rgba(250, 204, 21, 0.85), inset 0 0 12px rgba(239, 68, 68, 0.45)',
             }}
           >
-            <span
-              style={{
-                fontFamily: 'Impact, "Arial Black", sans-serif',
-                fontWeight: 900,
-                fontSize: '2.2rem',
-                letterSpacing: '3px',
-                color: '#fef08a',
-                textShadow: '0 3px 0 #dc2626, 0 5px 12px #000',
-              }}
-            >
-              GO! GO! GO!
-            </span>
-            <span
-              style={{
-                fontWeight: 900,
-                fontSize: '2.45rem',
-                color: '#ef4444',
-                textShadow: '0 2px 0 #fef08a, 0 4px 10px #000',
-              }}
-            >
-              ➔
-            </span>
+            {!goFingerPhase ? (
+              <span
+                style={{
+                  fontFamily: 'Impact, "Arial Black", sans-serif',
+                  fontWeight: 900,
+                  fontSize: '2.55rem',
+                  letterSpacing: '3px',
+                  color: '#fef08a',
+                  textShadow: '0 3px 0 #dc2626, 0 5px 12px #000',
+                  lineHeight: 1,
+                }}
+              >
+                GO!
+              </span>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', filter: 'drop-shadow(0 3px 0 #b91c1c)' }}>
+                <svg width="68" height="44" viewBox="0 0 68 44" fill="none" aria-label="Siga em frente">
+                  <path
+                    d="M8 15 H36 V9 L60 22 L36 35 V29 H8 C5.5 29 4 27 4 24.5 V19.5 C4 17 5.5 15 8 15 Z"
+                    fill="#fef08a"
+                    stroke="#0f172a"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                  />
+                  <rect x="6" y="17" width="12" height="10" rx="2" fill="#facc15" />
+                </svg>
+                <span style={{ fontSize: '2.15rem', lineHeight: 1 }} role="img" aria-hidden="true">👉</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -4315,34 +4498,177 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           </div>
         ))}
 
-        <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', right: '0.75rem', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'none' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gridTemplateRows: 'repeat(3, 40px)', gap: '4px', pointerEvents: 'auto' }}>
-            <div />
-            <button onPointerDown={() => { keysRef.current['w'] = true; }} onPointerUp={() => { keysRef.current['w'] = false; }} onPointerLeave={() => { keysRef.current['w'] = false; }} style={padBtnStyle}>▲</button>
-            <div />
-            <button onPointerDown={() => { keysRef.current['a'] = true; }} onPointerUp={() => { keysRef.current['a'] = false; }} onPointerLeave={() => { keysRef.current['a'] = false; }} style={padBtnStyle}>◀</button>
-            <div />
-            <button onPointerDown={() => { keysRef.current['d'] = true; }} onPointerUp={() => { keysRef.current['d'] = false; }} onPointerLeave={() => { keysRef.current['d'] = false; }} style={padBtnStyle}>▶</button>
-            <div />
-            <button onPointerDown={() => { keysRef.current['s'] = true; }} onPointerUp={() => { keysRef.current['s'] = false; }} onPointerLeave={() => { keysRef.current['s'] = false; }} style={padBtnStyle}>▼</button>
-            <div />
-          </div>
+        {isMobileArcade ? (
+          /* MODO MOBILE: Analógico virtual esquerdo estilo Cenários + botões táteis virtuais sem atalhos de teclado */
+          <div style={{ position: 'absolute', bottom: '0.95rem', left: '1rem', right: '1rem', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'none' }}>
+            <div
+              ref={joyBaseRef}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                joyTouchIdRef.current = e.pointerId;
+                try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+                const rect = e.currentTarget.getBoundingClientRect();
+                const dx = e.clientX - (rect.left + rect.width / 2);
+                const dy = e.clientY - (rect.top + rect.height / 2);
+                const dist = Math.hypot(dx, dy);
+                const maxR = 40;
+                const clamped = Math.min(dist, maxR);
+                const ang = Math.atan2(dy, dx);
+                const kx = Math.cos(ang) * clamped;
+                const ky = Math.sin(ang) * clamped;
+                if (joyKnobRef.current) {
+                  joyKnobRef.current.style.transition = 'none';
+                  joyKnobRef.current.style.transform = `translate(${kx}px, ${ky}px)`;
+                }
+                joyMoveRef.current = { x: kx / maxR, y: ky / maxR };
+              }}
+              onPointerMove={(e) => {
+                if (joyTouchIdRef.current !== e.pointerId || !joyBaseRef.current) return;
+                e.preventDefault();
+                const rect = joyBaseRef.current.getBoundingClientRect();
+                const dx = e.clientX - (rect.left + rect.width / 2);
+                const dy = e.clientY - (rect.top + rect.height / 2);
+                const dist = Math.hypot(dx, dy);
+                const maxR = 40;
+                const clamped = Math.min(dist, maxR);
+                const ang = Math.atan2(dy, dx);
+                const kx = Math.cos(ang) * clamped;
+                const ky = Math.sin(ang) * clamped;
+                if (joyKnobRef.current) {
+                  joyKnobRef.current.style.transform = `translate(${kx}px, ${ky}px)`;
+                }
+                joyMoveRef.current = { x: kx / maxR, y: ky / maxR };
+              }}
+              onPointerUp={(e) => {
+                if (joyTouchIdRef.current !== e.pointerId) return;
+                joyTouchIdRef.current = null;
+                try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+                if (joyKnobRef.current) {
+                  joyKnobRef.current.style.transition = 'transform 0.14s ease-out';
+                  joyKnobRef.current.style.transform = 'translate(0px, 0px)';
+                }
+                joyMoveRef.current = { x: 0, y: 0 };
+              }}
+              onPointerCancel={() => {
+                joyTouchIdRef.current = null;
+                if (joyKnobRef.current) joyKnobRef.current.style.transform = 'translate(0px, 0px)';
+                joyMoveRef.current = { x: 0, y: 0 };
+              }}
+              style={{
+                width: '116px',
+                height: '116px',
+                borderRadius: '50%',
+                background: 'rgba(15, 23, 42, 0.58)',
+                border: '2px solid rgba(255,255,255,0.28)',
+                boxShadow: 'inset 0 0 18px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                touchAction: 'none',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div
+                ref={joyKnobRef}
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle at 30% 30%, #f8fafc, #94a3b8)',
+                  border: '2px solid rgba(15, 23, 42, 0.7)',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.45)',
+                  pointerEvents: 'none',
+                }}
+              />
+            </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', pointerEvents: 'auto' }}>
-            <button onClick={() => { jumpQueuedRef.current = true; }} style={{ ...actionBtnStyle, background: 'rgba(59,130,246,0.85)' }}>
-              Pular
-            </button>
-            <button onClick={() => { kickQueuedRef.current = true; }} title="Chute / Acrobático (Tecla L ou C)" style={{ ...actionBtnStyle, background: 'rgba(234,179,8,0.9)', color: '#0f172a' }}>
-              🦵 Chute
-            </button>
-            <button onClick={() => { specialQueuedRef.current = true; }} style={{ ...actionBtnStyle, background: specialCooldownPct > 0 ? 'rgba(100,116,139,0.7)' : 'rgba(168,85,247,0.9)' }}>
-              <Zap size={16} /> Especial {specialCooldownPct > 0 ? `${Math.ceil(specialCooldownPct / 28)}s` : ''}
-            </button>
-            <button onClick={() => { attackQueuedRef.current = true; }} style={{ ...actionBtnStyle, background: 'rgba(239,68,68,0.92)', padding: '0.65rem 1.2rem' }}>
-              <Swords size={18} /> Bater
-            </button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', gap: '0.5rem', pointerEvents: 'auto', touchAction: 'none' }}>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); jumpQueuedRef.current = true; }}
+                style={{ ...actionBtnStyle, borderRadius: '999px', padding: '0.68rem 1rem', background: 'rgba(59,130,246,0.88)' }}
+              >
+                Pular
+              </button>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); kickQueuedRef.current = true; }}
+                style={{ ...actionBtnStyle, borderRadius: '999px', padding: '0.68rem 1rem', background: 'rgba(234,179,8,0.92)', color: '#0f172a' }}
+              >
+                🦵 Chute
+              </button>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); specialQueuedRef.current = true; }}
+                style={{
+                  ...actionBtnStyle,
+                  borderRadius: '999px',
+                  padding: '0.68rem 1rem',
+                  background: (specialCooldownPct > 0 || playerHp < playerMaxHp * 0.25) ? 'rgba(100,116,139,0.68)' : 'rgba(168,85,247,0.92)',
+                }}
+              >
+                <Zap size={16} /> Especial {specialCooldownPct > 0 ? `${Math.ceil(specialCooldownPct / 28)}s` : ''}
+              </button>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); attackQueuedRef.current = true; }}
+                style={{ ...actionBtnStyle, borderRadius: '999px', padding: '0.72rem 1.25rem', background: 'rgba(239,68,68,0.94)' }}
+              >
+                <Swords size={18} /> Bater
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* MODO DESKTOP: D-pad + botões exibindo as teclas de atalho correspondentes */
+          <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', right: '0.75rem', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'none' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gridTemplateRows: 'repeat(3, 40px)', gap: '4px' }}>
+                <div />
+                <button onPointerDown={() => { keysRef.current['w'] = true; }} onPointerUp={() => { keysRef.current['w'] = false; }} onPointerLeave={() => { keysRef.current['w'] = false; }} style={padBtnStyle}>▲</button>
+                <div />
+                <button onPointerDown={() => { keysRef.current['a'] = true; }} onPointerUp={() => { keysRef.current['a'] = false; }} onPointerLeave={() => { keysRef.current['a'] = false; }} style={padBtnStyle}>◀</button>
+                <div />
+                <button onPointerDown={() => { keysRef.current['d'] = true; }} onPointerUp={() => { keysRef.current['d'] = false; }} onPointerLeave={() => { keysRef.current['d'] = false; }} style={padBtnStyle}>▶</button>
+                <div />
+                <button onPointerDown={() => { keysRef.current['s'] = true; }} onPointerUp={() => { keysRef.current['s'] = false; }} onPointerLeave={() => { keysRef.current['s'] = false; }} style={padBtnStyle}>▼</button>
+                <div />
+              </div>
+              <span style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 'bold', background: 'rgba(15,23,42,0.72)', padding: '1px 6px', borderRadius: '6px' }}>
+                WASD / Setas
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', pointerEvents: 'auto' }}>
+              <button onClick={() => { jumpQueuedRef.current = true; }} title="Pular (Tecla Espaço)" style={{ ...actionBtnStyle, background: 'rgba(59,130,246,0.88)', flexDirection: 'column', gap: '2px', padding: '0.45rem 0.9rem' }}>
+                <span>Pular</span>
+                <span style={kbdTagStyle}>Espaço</span>
+              </button>
+              <button onClick={() => { kickQueuedRef.current = true; }} title="Chute / Voadora (Tecla L ou C)" style={{ ...actionBtnStyle, background: 'rgba(234,179,8,0.92)', color: '#0f172a', flexDirection: 'column', gap: '2px', padding: '0.45rem 0.9rem' }}>
+                <span>🦵 Chute</span>
+                <span style={{ ...kbdTagStyle, background: 'rgba(15,23,42,0.22)', color: '#0f172a' }}>L / C</span>
+              </button>
+              <button
+                onClick={() => { specialQueuedRef.current = true; }}
+                title="Golpe Especial -10% HP (Tecla K ou X)"
+                style={{
+                  ...actionBtnStyle,
+                  background: (specialCooldownPct > 0 || playerHp < playerMaxHp * 0.25) ? 'rgba(100,116,139,0.72)' : 'rgba(168,85,247,0.92)',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  padding: '0.45rem 0.9rem',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Zap size={15} /> Especial {specialCooldownPct > 0 ? `${Math.ceil(specialCooldownPct / 28)}s` : ''}
+                </span>
+                <span style={kbdTagStyle}>{playerHp < playerMaxHp * 0.25 ? 'HP < 25%' : 'K / X'}</span>
+              </button>
+              <button onClick={() => { attackQueuedRef.current = true; }} title="Bater / Atacar (Tecla J ou Z)" style={{ ...actionBtnStyle, background: 'rgba(239,68,68,0.94)', flexDirection: 'column', gap: '2px', padding: '0.45rem 1.15rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <Swords size={17} /> Bater
+                </span>
+                <span style={kbdTagStyle}>J / Z</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {roundClearInfo && (() => {
           const order: ArcadeStageId[] = ['stage1_streets', 'stage2_subway', 'stage3_westside', 'stage4_industrial', 'stage5_bay'];
@@ -4512,4 +4838,15 @@ const actionBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.35rem',
+};
+
+const kbdTagStyle: React.CSSProperties = {
+  fontSize: '0.62rem',
+  fontWeight: '900',
+  background: 'rgba(15, 23, 42, 0.55)',
+  color: '#f8fafc',
+  padding: '1px 6px',
+  borderRadius: '5px',
+  letterSpacing: '0.4px',
+  border: '1px solid rgba(255,255,255,0.2)',
 };

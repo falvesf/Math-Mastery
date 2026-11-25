@@ -266,18 +266,18 @@ const GANG_ARCHETYPES: {
   hair: string;
   skin: string;
 }[] = [
-    { name: 'Bred', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.94, speedMul: 0.96, hpMul: 0.9, atkMul: 0.85, defBonus: 6, hairStyle: 'short', shirt: '#dc2626', pants: '#1e3a8a', hair: '#92400e', skin: '#f1c27d' },
-    { name: 'Dug', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 0.98, hpMul: 1.0, atkMul: 0.9, defBonus: 7, hairStyle: 'spiky', shirt: '#16a34a', pants: '#1f2937', hair: '#facc15', skin: '#e0ac69' },
-    { name: 'Jake', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.98, speedMul: 0.95, hpMul: 1.08, atkMul: 0.95, defBonus: 8, hairStyle: 'short', shirt: '#2563eb', pants: '#1e293b', hair: '#78350f', skin: '#f1c27d' },
-    { name: 'Simons', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 1.0, speedMul: 0.94, hpMul: 1.15, atkMul: 1.0, defBonus: 9, hairStyle: 'short', shirt: '#78350f', pants: '#334155', hair: '#1c1917', skin: '#d97706' },
-    { name: 'Two-P', role: 'punk', tier: 'basic', minStage: 2, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 1.0, hpMul: 1.05, atkMul: 0.98, defBonus: 8, hairStyle: 'spiky', shirt: '#ea580c', pants: '#15803d', hair: '#f97316', skin: '#e0ac69' },
-    { name: 'Roxy (Poison)', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.18, hpMul: 0.95, atkMul: 1.05, defBonus: 7, hairStyle: 'long', shirt: '#ec4899', pants: '#312e81', hair: '#f43f5e', skin: '#ffdbac' },
+    { name: 'Bred', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.94, speedMul: 1.0, hpMul: 0.9, atkMul: 0.85, defBonus: 6, hairStyle: 'short', shirt: '#dc2626', pants: '#1e3a8a', hair: '#92400e', skin: '#f1c27d' },
+    { name: 'Dug', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 1.04, hpMul: 1.0, atkMul: 0.9, defBonus: 7, hairStyle: 'spiky', shirt: '#16a34a', pants: '#1f2937', hair: '#facc15', skin: '#e0ac69' },
+    { name: 'Jake', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.98, speedMul: 0.98, hpMul: 1.08, atkMul: 0.95, defBonus: 8, hairStyle: 'short', shirt: '#2563eb', pants: '#1e293b', hair: '#78350f', skin: '#f1c27d' },
+    { name: 'Simons', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 1.0, speedMul: 0.96, hpMul: 1.15, atkMul: 1.0, defBonus: 9, hairStyle: 'short', shirt: '#78350f', pants: '#334155', hair: '#1c1917', skin: '#d97706' },
+    { name: 'Two-P', role: 'punk', tier: 'basic', minStage: 2, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 1.08, hpMul: 1.05, atkMul: 0.98, defBonus: 8, hairStyle: 'spiky', shirt: '#ea580c', pants: '#15803d', hair: '#f97316', skin: '#e0ac69' },
+    { name: 'Roxy (Poison)', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.32, hpMul: 0.95, atkMul: 1.05, defBonus: 7, hairStyle: 'long', shirt: '#ec4899', pants: '#312e81', hair: '#f43f5e', skin: '#ffdbac' },
     { name: 'Slash', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'slash', gender: 'male', scale: 1.14, speedMul: 0.92, hpMul: 1.5, atkMul: 1.25, defBonus: 14, hairStyle: 'short', shirt: '#7c3aed', pants: '#18181b', hair: '#e5e7eb', skin: '#8d5524' },
     { name: 'Wong Who (Gordinho)', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'rusher', gender: 'male', scale: 1.02, widthScale: 1.38, speedMul: 0.95, hpMul: 1.48, atkMul: 1.22, defBonus: 14, hairStyle: 'short', shirt: '#f59e0b', pants: '#1e293b', hair: '#111827', skin: '#e0ac69' },
-    { name: 'Holly Wood (Ninja)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_knife', gender: 'male', scale: 0.94, speedMul: 1.16, hpMul: 1.1, atkMul: 1.18, defBonus: 10, hairStyle: 'short', shirt: '#1e293b', pants: '#0f172a', hair: '#09090b', skin: '#f1c27d' },
+    { name: 'Holly Wood (Ninja)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_knife', gender: 'male', scale: 0.94, speedMul: 1.38, hpMul: 1.1, atkMul: 1.18, defBonus: 10, hairStyle: 'short', shirt: '#1e293b', pants: '#0f172a', hair: '#09090b', skin: '#f1c27d' },
     { name: 'Andore Jr.', role: 'giant', tier: 'heavy', minStage: 2, moveProfile: 'giant', gender: 'male', scale: 1.36, widthScale: 1.24, speedMul: 0.82, hpMul: 2.35, atkMul: 1.55, defBonus: 22, hairStyle: 'long', shirt: '#b91c1c', pants: '#7f1d1d', hair: '#1f2937', skin: '#e0ac69' },
     { name: 'Andore Pai', role: 'giant', tier: 'heavy', minStage: 3, moveProfile: 'giant', gender: 'male', scale: 1.52, widthScale: 1.28, speedMul: 0.78, hpMul: 3.0, atkMul: 1.8, defBonus: 28, hairStyle: 'long', shirt: '#0f766e', pants: '#134e4a', hair: '#27272a', skin: '#c68642' },
-    { name: 'Ninja Vermelho (Fogo)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_fire', gender: 'male', scale: 0.95, speedMul: 1.18, hpMul: 1.12, atkMul: 1.2, defBonus: 10, hairStyle: 'short', shirt: '#dc2626', pants: '#991b1b', hair: '#7f1d1d', skin: '#ef4444' },
+    { name: 'Ninja Vermelho (Fogo)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_fire', gender: 'male', scale: 0.95, speedMul: 1.42, hpMul: 1.12, atkMul: 1.2, defBonus: 10, hairStyle: 'short', shirt: '#dc2626', pants: '#991b1b', hair: '#7f1d1d', skin: '#ef4444' },
   ];
 
 const CUBE_MONSTER_ARCHETYPES: {
@@ -331,8 +331,8 @@ export function buildFixedStageGang(
         isMonster: false,
         widthScale: arch.widthScale,
         scale: arch.scale,
-        // Velocidade mais tranquila e cadenciada como no Final Fight clássico!
-        speed: Number((1.54 * arch.speedMul + (stageNum - 1) * 0.05).toFixed(2)),
+        // Velocidade variada por arquétipo (rápida nos ninjas/acrobatas, média nos punks, cadenciada nos gigantes)
+        speed: Number((1.86 * arch.speedMul + (stageNum - 1) * 0.06).toFixed(2)),
         attack: Math.round(28 * arch.atkMul * diffScale * sizeBoost),
         defense: Math.round((arch.defBonus + stageNum * 3) * sizeBoost),
         hp: Math.round(185 * arch.hpMul * diffScale * hpVar),
