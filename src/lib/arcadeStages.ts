@@ -177,12 +177,21 @@ export function getStagePreBossX(stageId: ArcadeStageId): number {
   return Math.max(20, getStageMeta(stageId).length - 28);
 }
 
+export function getCampaignStageNumber(stageId: ArcadeStageId): number {
+  if (stageId === 'stage1_streets' || stageId === 'plains') return 1;
+  if (stageId === 'stage2_subway' || stageId === 'bonus_car' || stageId === 'desert') return 2;
+  if (stageId === 'stage3_westside' || stageId === 'nether') return 3;
+  if (stageId === 'stage4_industrial' || stageId === 'bonus_glass' || stageId === 'snow') return 4;
+  return 5;
+}
+
 export type EnemyMoveProfile = 'punk' | 'agile' | 'slash' | 'giant' | 'rusher' | 'ninja_knife' | 'ninja_fire';
 
 export interface GangEnemyTemplate {
   id: string;
   name: string;
   role: 'agile' | 'brawler' | 'giant' | 'punk';
+  tier: 'basic' | 'mid' | 'heavy';
   moveProfile: EnemyMoveProfile;
   isMonster?: boolean;
   isSubBoss?: boolean;
@@ -210,6 +219,7 @@ export interface ArcadeWaveDef {
   label: string;
   isBossWave?: boolean;
   isElevatorWave?: boolean;
+  isAmbushWave?: boolean;
   spawns: {
     side: 'front' | 'back' | 'drop' | 'door' | 'seat';
     zOffset: number;
@@ -217,6 +227,7 @@ export interface ArcadeWaveDef {
     doorZ?: number;
     seatX?: number;
     seatZ?: number;
+    tier?: 'basic' | 'mid' | 'heavy';
     isBoss?: boolean;
     isSubBoss?: boolean;
     isFireSquad?: boolean;
@@ -239,6 +250,8 @@ function mulberry32(seed: number) {
 const GANG_ARCHETYPES: {
   name: string;
   role: GangEnemyTemplate['role'];
+  tier: GangEnemyTemplate['tier'];
+  minStage: number;
   moveProfile: EnemyMoveProfile;
   gender: 'male' | 'female';
   scale: number;
@@ -253,20 +266,25 @@ const GANG_ARCHETYPES: {
   hair: string;
   skin: string;
 }[] = [
-    { name: 'Bred', role: 'punk', moveProfile: 'punk', gender: 'male', scale: 0.94, speedMul: 1.08, hpMul: 0.9, atkMul: 0.95, defBonus: 8, hairStyle: 'short', shirt: '#dc2626', pants: '#1e3a8a', hair: '#92400e', skin: '#f1c27d' },
-    { name: 'Roxy (Poison)', role: 'agile', moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.35, hpMul: 0.92, atkMul: 1.08, defBonus: 7, hairStyle: 'long', shirt: '#ec4899', pants: '#312e81', hair: '#f43f5e', skin: '#ffdbac' },
-    { name: 'Wong Who (Gordinho)', role: 'brawler', moveProfile: 'rusher', gender: 'male', scale: 1.02, widthScale: 1.38, speedMul: 1.18, hpMul: 1.5, atkMul: 1.32, defBonus: 16, hairStyle: 'short', shirt: '#f59e0b', pants: '#1e293b', hair: '#111827', skin: '#e0ac69' },
-    { name: 'Holly Wood (Ninja)', role: 'agile', moveProfile: 'ninja_knife', gender: 'male', scale: 0.94, speedMul: 1.34, hpMul: 1.08, atkMul: 1.25, defBonus: 10, hairStyle: 'short', shirt: '#1e293b', pants: '#0f172a', hair: '#09090b', skin: '#f1c27d' },
-    { name: 'Slash', role: 'brawler', moveProfile: 'slash', gender: 'male', scale: 1.16, speedMul: 1.05, hpMul: 1.6, atkMul: 1.4, defBonus: 18, hairStyle: 'short', shirt: '#7c3aed', pants: '#18181b', hair: '#e5e7eb', skin: '#8d5524' },
-    { name: 'Dug', role: 'punk', moveProfile: 'punk', gender: 'male', scale: 0.98, speedMul: 1.06, hpMul: 1.05, atkMul: 1.05, defBonus: 10, hairStyle: 'spiky', shirt: '#16a34a', pants: '#1f2937', hair: '#facc15', skin: '#e0ac69' },
-    { name: 'Andore Jr.', role: 'giant', moveProfile: 'giant', gender: 'male', scale: 1.36, widthScale: 1.24, speedMul: 0.92, hpMul: 2.45, atkMul: 1.7, defBonus: 24, hairStyle: 'long', shirt: '#b91c1c', pants: '#7f1d1d', hair: '#1f2937', skin: '#e0ac69' },
-    { name: 'Andore Pai', role: 'giant', moveProfile: 'giant', gender: 'male', scale: 1.52, widthScale: 1.28, speedMul: 0.86, hpMul: 3.2, atkMul: 2.0, defBonus: 32, hairStyle: 'long', shirt: '#0f766e', pants: '#134e4a', hair: '#27272a', skin: '#c68642' },
-    { name: 'Ninja Vermelho (Fogo)', role: 'agile', moveProfile: 'ninja_fire', gender: 'male', scale: 0.95, speedMul: 1.36, hpMul: 1.12, atkMul: 1.32, defBonus: 11, hairStyle: 'short', shirt: '#dc2626', pants: '#991b1b', hair: '#7f1d1d', skin: '#ef4444' },
+    { name: 'Bred', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.94, speedMul: 0.96, hpMul: 0.9, atkMul: 0.85, defBonus: 6, hairStyle: 'short', shirt: '#dc2626', pants: '#1e3a8a', hair: '#92400e', skin: '#f1c27d' },
+    { name: 'Dug', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 0.98, hpMul: 1.0, atkMul: 0.9, defBonus: 7, hairStyle: 'spiky', shirt: '#16a34a', pants: '#1f2937', hair: '#facc15', skin: '#e0ac69' },
+    { name: 'Jake', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.98, speedMul: 0.95, hpMul: 1.08, atkMul: 0.95, defBonus: 8, hairStyle: 'short', shirt: '#2563eb', pants: '#1e293b', hair: '#78350f', skin: '#f1c27d' },
+    { name: 'Simons', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 1.0, speedMul: 0.94, hpMul: 1.15, atkMul: 1.0, defBonus: 9, hairStyle: 'short', shirt: '#78350f', pants: '#334155', hair: '#1c1917', skin: '#d97706' },
+    { name: 'Two-P', role: 'punk', tier: 'basic', minStage: 2, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 1.0, hpMul: 1.05, atkMul: 0.98, defBonus: 8, hairStyle: 'spiky', shirt: '#ea580c', pants: '#15803d', hair: '#f97316', skin: '#e0ac69' },
+    { name: 'Roxy (Poison)', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.18, hpMul: 0.95, atkMul: 1.05, defBonus: 7, hairStyle: 'long', shirt: '#ec4899', pants: '#312e81', hair: '#f43f5e', skin: '#ffdbac' },
+    { name: 'Slash', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'slash', gender: 'male', scale: 1.14, speedMul: 0.92, hpMul: 1.5, atkMul: 1.25, defBonus: 14, hairStyle: 'short', shirt: '#7c3aed', pants: '#18181b', hair: '#e5e7eb', skin: '#8d5524' },
+    { name: 'Wong Who (Gordinho)', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'rusher', gender: 'male', scale: 1.02, widthScale: 1.38, speedMul: 0.95, hpMul: 1.48, atkMul: 1.22, defBonus: 14, hairStyle: 'short', shirt: '#f59e0b', pants: '#1e293b', hair: '#111827', skin: '#e0ac69' },
+    { name: 'Holly Wood (Ninja)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_knife', gender: 'male', scale: 0.94, speedMul: 1.16, hpMul: 1.1, atkMul: 1.18, defBonus: 10, hairStyle: 'short', shirt: '#1e293b', pants: '#0f172a', hair: '#09090b', skin: '#f1c27d' },
+    { name: 'Andore Jr.', role: 'giant', tier: 'heavy', minStage: 2, moveProfile: 'giant', gender: 'male', scale: 1.36, widthScale: 1.24, speedMul: 0.82, hpMul: 2.35, atkMul: 1.55, defBonus: 22, hairStyle: 'long', shirt: '#b91c1c', pants: '#7f1d1d', hair: '#1f2937', skin: '#e0ac69' },
+    { name: 'Andore Pai', role: 'giant', tier: 'heavy', minStage: 3, moveProfile: 'giant', gender: 'male', scale: 1.52, widthScale: 1.28, speedMul: 0.78, hpMul: 3.0, atkMul: 1.8, defBonus: 28, hairStyle: 'long', shirt: '#0f766e', pants: '#134e4a', hair: '#27272a', skin: '#c68642' },
+    { name: 'Ninja Vermelho (Fogo)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_fire', gender: 'male', scale: 0.95, speedMul: 1.18, hpMul: 1.12, atkMul: 1.2, defBonus: 10, hairStyle: 'short', shirt: '#dc2626', pants: '#991b1b', hair: '#7f1d1d', skin: '#ef4444' },
   ];
 
 const CUBE_MONSTER_ARCHETYPES: {
   name: string;
   role: GangEnemyTemplate['role'];
+  tier: GangEnemyTemplate['tier'];
+  minStage: number;
   moveProfile: EnemyMoveProfile;
   scale: number;
   widthScale?: number;
@@ -281,148 +299,167 @@ const CUBE_MONSTER_ARCHETYPES: {
   eye: string;
   hairStyle: string;
 }[] = [
-    { name: 'Goblin Batedor', role: 'agile', moveProfile: 'agile', scale: 0.78, speedMul: 1.34, hpMul: 0.92, atkMul: 0.98, defBonus: 8, skin: '#4ade80', shirt: '#3f6212', pants: '#1a2e05', hair: '#14532d', eye: '#ef4444', hairStyle: 'spiky' },
-    { name: 'Zumbi Tóxico', role: 'punk', moveProfile: 'punk', scale: 1.0, speedMul: 1.02, hpMul: 1.22, atkMul: 1.18, defBonus: 12, skin: '#22c55e', shirt: '#0284c7', pants: '#312e81', hair: '#064e3b', eye: '#facc15', hairStyle: 'short' },
-    { name: 'Orc Brutamontes', role: 'brawler', moveProfile: 'rusher', scale: 1.24, widthScale: 1.22, speedMul: 0.94, hpMul: 1.9, atkMul: 1.52, defBonus: 20, skin: '#15803d', shirt: '#78350f', pants: '#451a03', hair: '#1c1917', eye: '#fb923c', hairStyle: 'spiky' },
-    { name: 'Golem de Ferro', role: 'giant', moveProfile: 'giant', scale: 1.44, widthScale: 1.25, speedMul: 0.8, hpMul: 2.95, atkMul: 1.9, defBonus: 34, skin: '#94a3b8', shirt: '#64748b', pants: '#475569', hair: '#334155', eye: '#ef4444', hairStyle: 'short' },
+    { name: 'Goblin Batedor', role: 'agile', tier: 'basic', minStage: 1, moveProfile: 'punk', scale: 0.8, speedMul: 1.06, hpMul: 0.92, atkMul: 0.9, defBonus: 6, skin: '#4ade80', shirt: '#3f6212', pants: '#1a2e05', hair: '#14532d', eye: '#ef4444', hairStyle: 'spiky' },
+    { name: 'Zumbi Tóxico', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', scale: 1.0, speedMul: 0.88, hpMul: 1.18, atkMul: 1.0, defBonus: 10, skin: '#22c55e', shirt: '#0284c7', pants: '#312e81', hair: '#064e3b', eye: '#facc15', hairStyle: 'short' },
+    { name: 'Orc Brutamontes', role: 'brawler', tier: 'mid', minStage: 2, moveProfile: 'rusher', scale: 1.22, widthScale: 1.2, speedMul: 0.86, hpMul: 1.75, atkMul: 1.35, defBonus: 18, skin: '#15803d', shirt: '#78350f', pants: '#451a03', hair: '#1c1917', eye: '#fb923c', hairStyle: 'spiky' },
+    { name: 'Golem de Ferro', role: 'giant', tier: 'heavy', minStage: 4, moveProfile: 'giant', scale: 1.42, widthScale: 1.25, speedMul: 0.72, hpMul: 2.75, atkMul: 1.65, defBonus: 30, skin: '#94a3b8', shirt: '#64748b', pants: '#475569', hair: '#334155', eye: '#ef4444', hairStyle: 'short' },
   ];
 
 /**
- * Gera o elenco FIXO do estágio separando:
- * - `regularRoster`: humanos da gangue (Bred, Poison/Roxy, Slash, Andores, Gordinho, Ninjas) + monstros em blocos/cubos
- * - `subBossRoster`: bonecos com SKIN própria (`preset_skins` sem GLB) promovidos a SUB-CHEFES com atributos altos e golpes variados
- * OBS: Modelos `.glb` NÃO entram aqui — permanecem exclusivos como CHEFES finais!
+ * Gera o elenco FIXO do estágio respeitando a progressão canônica (sem monstros/inimigos avançados logo de cara)
+ * e com velocidades cadenciadas estilo Final Fight!
  */
 export function buildFixedStageGang(
   stageId: ArcadeStageId,
   cubeMonsterPresets: any[]
 ): { regularRoster: GangEnemyTemplate[]; subBossRoster: GangEnemyTemplate[] } {
-  const stageIdx = Math.max(1, CAMPAIGN_ORDER.findIndex(s => s.id === stageId) + 1);
-  const rand = mulberry32(stageIdx * 977 + 1337);
-  const diffScale = 1 + (stageIdx - 1) * 0.42;
+  const stageNum = getCampaignStageNumber(stageId);
+  const rand = mulberry32(stageNum * 977 + 1337);
+  const diffScale = 1 + (stageNum - 1) * 0.25;
 
-  const humans: GangEnemyTemplate[] = GANG_ARCHETYPES.map((arch, idx) => {
-    const hpVar = 0.94 + rand() * 0.14;
-    const sizeBoost = arch.scale >= 1.25 ? 1.22 : arch.scale <= 0.9 ? 0.92 : 1.0;
-    return {
-      id: `${stageId}_gang_${idx}`,
-      name: stageIdx >= 3 && arch.role === 'giant' ? `${arch.name} Mk.${stageIdx - 1}` : arch.name,
-      role: arch.role,
-      moveProfile: arch.moveProfile,
-      isMonster: false,
-      widthScale: arch.widthScale,
-      scale: arch.scale,
-      speed: Number((2.45 * arch.speedMul + (stageIdx - 1) * 0.12).toFixed(2)),
-      attack: Math.round(58 * arch.atkMul * diffScale * sizeBoost),
-      defense: Math.round((arch.defBonus + stageIdx * 4) * sizeBoost),
-      hp: Math.round(210 * arch.hpMul * diffScale * hpVar),
-      evasion: arch.role === 'agile' ? 12 : 0,
-      critChance: arch.role === 'brawler' || arch.role === 'giant' ? 16 : 8,
-      hasSpecial: arch.moveProfile !== 'punk',
-      damageEffect: arch.moveProfile === 'ninja_fire' ? 'burn' : 'none',
-      avatarConfig: {
-        gender: arch.gender,
-        skinColor: arch.skin,
-        hairStyle: arch.hairStyle,
-        hairColor: arch.hair,
-        shirtColor: arch.shirt,
-        pantsColor: arch.pants,
-        shoesColor: '#111827',
-        eyeColor: '#0f172a',
-        expression: 'angry',
-      },
-    };
-  });
+  const humans: GangEnemyTemplate[] = GANG_ARCHETYPES
+    .filter(arch => stageNum >= arch.minStage)
+    .map((arch, idx) => {
+      const hpVar = 0.94 + rand() * 0.12;
+      const sizeBoost = arch.scale >= 1.25 ? 1.15 : arch.scale <= 0.9 ? 0.94 : 1.0;
+      return {
+        id: `${stageId}_gang_${idx}`,
+        name: stageNum >= 4 && arch.role === 'giant' ? `${arch.name} Mk.${stageNum - 2}` : arch.name,
+        role: arch.role,
+        tier: arch.tier,
+        moveProfile: arch.moveProfile,
+        isMonster: false,
+        widthScale: arch.widthScale,
+        scale: arch.scale,
+        // Velocidade mais tranquila e cadenciada como no Final Fight clássico!
+        speed: Number((1.54 * arch.speedMul + (stageNum - 1) * 0.05).toFixed(2)),
+        attack: Math.round(28 * arch.atkMul * diffScale * sizeBoost),
+        defense: Math.round((arch.defBonus + stageNum * 3) * sizeBoost),
+        hp: Math.round(185 * arch.hpMul * diffScale * hpVar),
+        evasion: arch.role === 'agile' ? 10 : 0,
+        critChance: arch.role === 'brawler' || arch.role === 'giant' ? 12 : 6,
+        hasSpecial: arch.moveProfile !== 'punk',
+        damageEffect: arch.moveProfile === 'ninja_fire' ? 'burn' : 'none',
+        avatarConfig: {
+          gender: arch.gender,
+          skinColor: arch.skin,
+          hairStyle: arch.hairStyle,
+          hairColor: arch.hair,
+          shirtColor: arch.shirt,
+          pantsColor: arch.pants,
+          shoesColor: '#111827',
+          eyeColor: '#0f172a',
+          expression: 'angry',
+        },
+      };
+    });
 
   const blockMonsters: GangEnemyTemplate[] = [];
   const subBossRoster: GangEnemyTemplate[] = [];
   const subProfiles: EnemyMoveProfile[] = ['slash', 'giant', 'agile', 'rusher', 'ninja_knife'];
 
-  cubeMonsterPresets.forEach((m, i) => {
-    const baseHp = Math.max(100, Number(m.hp) || 125);
-    const baseAtk = Math.max(24, Number(m.attack) || 30);
-    const baseDef = Math.max(8, Number(m.defense) || 10);
+  // Ordena monstros customizados da base do mais simples ao mais forte para liberar gradualmente por estágio
+  const sortedPresets = [...cubeMonsterPresets].sort(
+    (a, b) => ((Number(a.hp) || 100) + (Number(a.attack) || 20) * 4) - ((Number(b.hp) || 100) + (Number(b.attack) || 20) * 4)
+  );
+  const nonGlbPresets = sortedPresets.filter(m => !m.skinUrl);
+  const glbPresets = sortedPresets.filter(m => !!m.skinUrl);
 
-    if (m.skinUrl) {
-      // Bonecos com SKIN 2D própria viram SUB-CHEFES raros com atributos elevados e escala imponente!
-      const prof = subProfiles[(i + stageIdx) % subProfiles.length];
-      subBossRoster.push({
-        id: `subboss_${stageId}_${m.id}_${i}`,
-        name: `⭐ Sub-Chefe: ${m.name}`,
-        role: 'giant',
-        moveProfile: prof,
-        isMonster: true,
-        isSubBoss: true,
-        skinUrl: m.skinUrl,
-        avatarConfig: m.avatarConfig || {},
-        drops: m.drops || [],
-        scale: Number(Math.max(1.24, Math.min(1.42, (m.scale || 1.0) * 1.28)).toFixed(2)),
-        speed: Number((2.6 + (i % 2) * 0.25).toFixed(2)),
-        attack: Math.round(Math.max(88, baseAtk * 2.8) * diffScale),
-        defense: Math.round((baseDef + 16 + stageIdx * 5) * 1.3),
-        hp: Math.round(Math.max(520, baseHp * 3.8) * diffScale),
-        evasion: Math.max(6, Number(m.evasion) || 4),
-        critChance: Math.max(14, Number(m.critChance) || 14),
-        damageEffect: m.damageEffect || 'none',
-        hasSpecial: true,
-      });
-    } else {
-      // Sem skinUrl (apenas config de blocos) -> integra grupos comuns como monstro de cubo
-      const isHeavy = i % 2 === 1;
-      blockMonsters.push({
-        id: `sys_block_mon_${stageId}_${m.id}_${i}`,
-        name: m.name,
-        role: isHeavy ? 'brawler' : 'agile',
-        moveProfile: isHeavy ? 'rusher' : 'agile',
-        isMonster: true,
-        avatarConfig: m.avatarConfig || {},
-        drops: m.drops || [],
-        scale: Number(Math.max(0.84, Math.min(1.28, m.scale || (isHeavy ? 1.18 : 0.92))).toFixed(2)),
-        speed: isHeavy ? 2.3 : 2.85,
-        attack: Math.round(Math.max(54, baseAtk * 2.0) * diffScale),
-        defense: Math.round(baseDef + stageIdx * 4),
-        hp: Math.round(Math.max(210, baseHp * 2.1) * diffScale),
-        evasion: Number(m.evasion) || (isHeavy ? 2 : 10),
-        critChance: Number(m.critChance) || 9,
-        damageEffect: m.damageEffect || 'none',
-        hasSpecial: true,
-      });
-    }
-  });
-
-  // Complementa com monstros temáticos em cubo (Goblin, Zumbi, Orc, Golem)
-  CUBE_MONSTER_ARCHETYPES.forEach((cm, ci) => {
-    const sizeBoost = cm.scale >= 1.25 ? 1.22 : cm.scale <= 0.85 ? 0.92 : 1.0;
-    blockMonsters.push({
-      id: `cube_arch_${stageId}_${ci}`,
-      name: cm.name,
-      role: cm.role,
-      moveProfile: cm.moveProfile,
+  glbPresets.forEach((m, i) => {
+    const baseHp = Math.max(95, Number(m.hp) || 120);
+    const baseAtk = Math.max(18, Number(m.attack) || 26);
+    const baseDef = Math.max(6, Number(m.defense) || 10);
+    const prof = subProfiles[(i + stageNum) % subProfiles.length];
+    subBossRoster.push({
+      id: `subboss_${stageId}_${m.id}_${i}`,
+      name: `⭐ Sub-Chefe: ${m.name}`,
+      role: 'giant',
+      tier: 'heavy',
+      moveProfile: prof,
       isMonster: true,
-      widthScale: cm.widthScale,
-      scale: cm.scale,
-      speed: Number((2.45 * cm.speedMul + (stageIdx - 1) * 0.1).toFixed(2)),
-      attack: Math.round(62 * cm.atkMul * diffScale * sizeBoost),
-      defense: Math.round((cm.defBonus + stageIdx * 4) * sizeBoost),
-      hp: Math.round(225 * cm.hpMul * diffScale),
-      evasion: cm.role === 'agile' ? 10 : 0,
-      critChance: cm.role === 'giant' || cm.role === 'brawler' ? 15 : 8,
+      isSubBoss: true,
+      skinUrl: m.skinUrl,
+      avatarConfig: m.avatarConfig || {},
+      drops: m.drops || [],
+      scale: Number(Math.max(1.22, Math.min(1.4, (m.scale || 1.0) * 1.25)).toFixed(2)),
+      speed: Number((1.58 + (i % 2) * 0.12).toFixed(2)),
+      attack: Math.round(baseAtk * (1.2 + (stageNum - 1) * 0.16)),
+      defense: Math.round((baseDef + 12 + stageNum * 4) * 1.15),
+      hp: Math.round(Math.max(400, baseHp * 3.0) * diffScale),
+      evasion: Math.max(5, Number(m.evasion) || 4),
+      critChance: Math.max(10, Number(m.critChance) || 12),
+      damageEffect: m.damageEffect || 'none',
       hasSpecial: true,
-      avatarConfig: {
-        gender: 'male',
-        skinColor: cm.skin,
-        hairStyle: cm.hairStyle,
-        hairColor: cm.hair,
-        shirtColor: cm.shirt,
-        pantsColor: cm.pants,
-        shoesColor: '#0f172a',
-        eyeColor: cm.eye,
-        expression: 'angry',
-      },
     });
   });
 
-  // Mescla alternada: humano -> monstro em cubo -> humano -> monstro em cubo
+  nonGlbPresets.forEach((m, i) => {
+    // Libera monstros customizados mais fortes apenas nos estágios seguintes
+    const unlockStage = nonGlbPresets.length <= 2
+      ? (i === 0 ? 1 : 2)
+      : Math.min(5, 1 + Math.floor((i / nonGlbPresets.length) * 4));
+    if (stageNum < unlockStage) return;
+
+    const baseHp = Math.max(95, Number(m.hp) || 120);
+    const baseAtk = Math.max(18, Number(m.attack) || 26);
+    const baseDef = Math.max(6, Number(m.defense) || 10);
+    const isHeavy = unlockStage >= 3 || (i % 2 === 1 && stageNum >= 2);
+    blockMonsters.push({
+      id: `sys_block_mon_${stageId}_${m.id}_${i}`,
+      name: m.name,
+      role: isHeavy ? 'brawler' : 'punk',
+      tier: unlockStage >= 4 ? 'heavy' : isHeavy ? 'mid' : 'basic',
+      moveProfile: isHeavy ? 'rusher' : 'punk',
+      isMonster: true,
+      avatarConfig: m.avatarConfig || {},
+      drops: m.drops || [],
+      scale: Number(Math.max(0.84, Math.min(1.22, m.scale || (isHeavy ? 1.14 : 0.92))).toFixed(2)),
+      speed: isHeavy ? 1.46 : 1.65,
+      // Respeita diretamente o ataque configurado do monstro
+      attack: Math.round(baseAtk * (1 + (stageNum - 1) * 0.12)),
+      defense: Math.round(baseDef + stageNum * 3),
+      hp: Math.round(Math.max(175, baseHp * 1.7) * diffScale),
+      evasion: Number(m.evasion) || (isHeavy ? 2 : 8),
+      critChance: Number(m.critChance) || 7,
+      damageEffect: m.damageEffect || 'none',
+      hasSpecial: isHeavy,
+    });
+  });
+
+  CUBE_MONSTER_ARCHETYPES
+    .filter(cm => stageNum >= cm.minStage)
+    .forEach((cm, ci) => {
+      const sizeBoost = cm.scale >= 1.25 ? 1.15 : cm.scale <= 0.85 ? 0.92 : 1.0;
+      blockMonsters.push({
+        id: `cube_arch_${stageId}_${ci}`,
+        name: cm.name,
+        role: cm.role,
+        tier: cm.tier,
+        moveProfile: cm.moveProfile,
+        isMonster: true,
+        widthScale: cm.widthScale,
+        scale: cm.scale,
+        speed: Number((1.54 * cm.speedMul + (stageNum - 1) * 0.05).toFixed(2)),
+        attack: Math.round(30 * cm.atkMul * diffScale * sizeBoost),
+        defense: Math.round((cm.defBonus + stageNum * 3) * sizeBoost),
+        hp: Math.round(195 * cm.hpMul * diffScale),
+        evasion: cm.role === 'agile' ? 8 : 0,
+        critChance: cm.role === 'giant' || cm.role === 'brawler' ? 12 : 6,
+        hasSpecial: cm.tier !== 'basic',
+        avatarConfig: {
+          gender: 'male',
+          skinColor: cm.skin,
+          hairStyle: cm.hairStyle,
+          hairColor: cm.hair,
+          shirtColor: cm.shirt,
+          pantsColor: cm.pants,
+          shoesColor: '#0f172a',
+          eyeColor: cm.eye,
+          expression: 'angry',
+        },
+      });
+    });
+
   const regularRoster: GangEnemyTemplate[] = [];
   const maxLen = Math.max(humans.length, blockMonsters.length);
   for (let i = 0; i < maxLen; i++) {
@@ -440,81 +477,78 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
       {
         triggerX: 11, lockMinX: 3, lockMaxX: 22, label: 'SLUM — RUA INICIAL & GANGUE MAD GEAR!',
         spawns: [
-          { side: 'front', zOffset: -0.6, gangIdx: 0 },
-          { side: 'door', doorX: 18, doorZ: -3.9, zOffset: 0.4, gangIdx: 5 },
-          { side: 'front', zOffset: 0.9, gangIdx: 1 },
-          { side: 'back', zOffset: 0.1, gangIdx: 2 },
+          { side: 'front', zOffset: -0.6, tier: 'basic', gangIdx: 0 },
+          { side: 'door', doorX: 18, doorZ: -3.9, zOffset: 0.4, tier: 'basic', gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
         triggerX: 39, lockMinX: 30, lockMaxX: 51, label: 'BECO DA CABINE TELEFÔNICA & LATA DE LIXO!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 2 },
-          { side: 'front', zOffset: 0.8, gangIdx: 4 },
-          { side: 'back', zOffset: -0.2, gangIdx: 3 },
-          { side: 'front', zOffset: 1.1, gangIdx: 6 },
+          { side: 'front', zOffset: -1.0, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'basic', gangIdx: 3 },
+          { side: 'back', zOffset: -0.2, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 1.1, tier: 'basic', gangIdx: 0 },
         ],
       },
       {
         triggerX: 64, lockMinX: 55, lockMaxX: 76, label: 'GUARDA NA ENTRADA DO GALPÃO!',
         spawns: [
-          { side: 'door', doorX: 55, doorZ: -3.9, zOffset: 0.2, gangIdx: 8 },
-          { side: 'front', zOffset: -0.9, isSubBoss: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 7 },
-          { side: 'back', zOffset: -0.4, gangIdx: 5 },
+          { side: 'door', doorX: 55, doorZ: -3.9, zOffset: 0.2, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: -0.9, tier: 'basic', gangIdx: 3 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: -0.4, tier: 'basic', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 209, lockMinX: 202, lockMaxX: 222, label: '📦 GALPÃO DO SLUM — EMBOSCADA NO DEPÓSITO!',
+        triggerX: 209, lockMinX: 202, lockMaxX: 222, label: '📦 GALPÃO DO SLUM — EMBOSCADA NO DEPÓSITO!', isAmbushWave: true,
         spawns: [
-          { side: 'front', zOffset: -0.7, gangIdx: 6 },
-          { side: 'front', zOffset: 0.8, gangIdx: 8 },
-          { side: 'front', zOffset: 0.0, gangIdx: 0 },
-          { side: 'back', zOffset: 1.0, gangIdx: 3 },
+          { side: 'front', zOffset: -0.7, tier: 'basic', gangIdx: 0 },
+          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: 0.0, tier: 'basic', gangIdx: 2 },
+          { side: 'back', zOffset: 1.0, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
-        triggerX: 229, lockMinX: 220, lockMaxX: 241, label: '🔥 GALPÃO — NINJAS DO FOGO & ACROBATAS!',
+        triggerX: 229, lockMinX: 220, lockMaxX: 241, label: '📦 GALPÃO — ROXY, SLASH & CAPANGAS!',
         spawns: [
-          { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: -0.1, gangIdx: 2 },
-          { side: 'front', zOffset: 0.3, gangIdx: 1 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: -0.1, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: 0.3, tier: 'basic', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 247, lockMinX: 238, lockMaxX: 259, label: '💪 GALPÃO — BILL BULL (GORDINHO) & SUB-CHEFE!',
+        triggerX: 247, lockMinX: 238, lockMaxX: 259, label: '💪 GALPÃO — WONG WHO (GORDINHO) & SUB-CHEFE!',
         spawns: [
-          { side: 'front', zOffset: -0.3, gangIdx: 4 },
-          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 1 },
-          { side: 'back', zOffset: -0.9, gangIdx: 6 },
-          { side: 'front', zOffset: 1.1, gangIdx: 9 },
+          { side: 'front', zOffset: -0.3, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 0 },
+          { side: 'back', zOffset: -0.9, tier: 'basic', gangIdx: 0 },
         ],
       },
       {
         triggerX: 416, lockMinX: 406, lockMaxX: 428, label: '🚗 FERRO-VELHO DOS CARROS DESTRUÍDOS!',
         spawns: [
-          { side: 'front', zOffset: -0.9, gangIdx: 8 },
-          { side: 'front', zOffset: 0.8, gangIdx: 6 },
-          { side: 'back', zOffset: 0.1, gangIdx: 2 },
-          { side: 'front', zOffset: -0.1, gangIdx: 5 },
+          { side: 'front', zOffset: -0.9, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: 0.1, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: -0.1, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
         triggerX: 438, lockMinX: 429, lockMaxX: 450, label: '🚪 ANTESALA DA PORTA DO DANDE!',
         spawns: [
-          { side: 'front', zOffset: -1.0, isSubBoss: true, gangIdx: 2 },
-          { side: 'front', zOffset: 0.9, gangIdx: 4 },
-          { side: 'back', zOffset: -0.2, gangIdx: 2 },
-          { side: 'front', zOffset: 0.2, gangIdx: 7 },
+          { side: 'front', zOffset: -1.0, isSubBoss: true, gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: -0.2, tier: 'basic', gangIdx: 1 },
         ],
       },
       {
         triggerX: 453, lockMinX: 444, lockMaxX: 465, label: '💥 DANDE ARROMBOU A PORTA DUPLA!', isBossWave: true,
         spawns: [
           { side: 'door', doorX: 455.5, doorZ: -3.5, zOffset: 0.1, isBoss: true, gangIdx: 0 },
-          { side: 'front', zOffset: -1.0, gangIdx: 0 },
-          { side: 'back', zOffset: 1.0, gangIdx: 6 },
+          { side: 'front', zOffset: -1.0, tier: 'basic', gangIdx: 0 },
+          { side: 'back', zOffset: 1.0, tier: 'basic', gangIdx: 2 },
         ],
       },
     ];
@@ -523,92 +557,88 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
   if (stageId === 'stage2_subway') {
     return [
       {
-        triggerX: 17, lockMinX: 8, lockMaxX: 30, label: 'ESTAÇÃO DO METRÔ — CABINE TELEFÔNICA & SLASH!',
+        triggerX: 17, lockMinX: 8, lockMaxX: 30, label: 'ESTAÇÃO DO METRÔ — CABINE TELEFÔNICA & PUNKS!',
         spawns: [
-          { side: 'front', zOffset: -0.7, gangIdx: 2 },
-          { side: 'front', zOffset: 0.9, gangIdx: 8 },
-          { side: 'back', zOffset: 0.1, gangIdx: 0 },
-          { side: 'front', zOffset: -0.1, gangIdx: 1 },
+          { side: 'front', zOffset: -0.7, tier: 'basic', gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'basic', gangIdx: 4 },
+          { side: 'back', zOffset: 0.1, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: -0.1, tier: 'basic', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 40, lockMinX: 31, lockMaxX: 52, label: 'PLATAFORMA CENTRAL — PUNKS & GORDINHOS!',
+        triggerX: 40, lockMinX: 31, lockMaxX: 52, label: 'PLATAFORMA CENTRAL — PUNKS & WONG WHO!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 4 },
-          { side: 'front', zOffset: 0.8, gangIdx: 7 },
-          { side: 'back', zOffset: -0.4, gangIdx: 3 },
-          { side: 'back', zOffset: 1.1, gangIdx: 6 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'basic', gangIdx: 2 },
+          { side: 'back', zOffset: -0.4, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: 1.1, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
-        triggerX: 58, lockMinX: 49, lockMaxX: 69, label: 'VAGÕES ESTACIONADOS — POISON & NINJAS!',
+        triggerX: 58, lockMinX: 49, lockMaxX: 69, label: 'VAGÕES ESTACIONADOS — POISON & HOLLY WOOD!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 2 },
-          { side: 'front', zOffset: 0.6, gangIdx: 6 },
-          { side: 'back', zOffset: 0.2, gangIdx: 9 },
-          { side: 'back', zOffset: -1.1, gangIdx: 5 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 0.6, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: 0.2, tier: 'basic', gangIdx: 4 },
+          { side: 'back', zOffset: -1.1, tier: 'basic', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 74, lockMinX: 65, lockMaxX: 84, label: 'ÚLTIMO VAGÃO — HOLLY WOOD & ANDORE JR.!',
+        triggerX: 74, lockMinX: 65, lockMaxX: 84, label: 'ÚLTIMO VAGÃO — ESTREIA DO ANDORE JR.!',
         spawns: [
           { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 6 },
-          { side: 'back', zOffset: -0.8, isSubBoss: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'basic', gangIdx: 0 },
+          { side: 'back', zOffset: -0.8, tier: 'mid', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 190, lockMinX: 182, lockMaxX: 205, label: '🚇 VAGÃO 1 — GANGUE SENTADA NOS BANCOS!',
+        triggerX: 190, lockMinX: 182, lockMaxX: 205, label: '🚇 VAGÃO 1 — GANGUE SENTADA NOS BANCOS!', isAmbushWave: true,
         spawns: [
-          { side: 'seat', seatX: 196.5, seatZ: -2.15, zOffset: -0.6, gangIdx: 0 },
-          { side: 'seat', seatX: 198.2, seatZ: -2.15, zOffset: 0.4, gangIdx: 5 },
-          { side: 'seat', seatX: 200.0, seatZ: -2.15, zOffset: 0.9, gangIdx: 1 },
-          { side: 'front', zOffset: -0.2, gangIdx: 3 },
+          { side: 'seat', seatX: 196.5, seatZ: -2.15, zOffset: -0.6, tier: 'basic', gangIdx: 0 },
+          { side: 'seat', seatX: 198.2, seatZ: -2.15, zOffset: 0.4, tier: 'basic', gangIdx: 4 },
+          { side: 'seat', seatX: 200.0, seatZ: -2.15, zOffset: 0.9, tier: 'basic', gangIdx: 1 },
+          { side: 'front', zOffset: -0.2, tier: 'mid', gangIdx: 0 },
         ],
       },
       {
         triggerX: 218, lockMinX: 210, lockMaxX: 235, label: '🚇 VAGÃO 2 — ANDORE JR. & ACROBATAS!',
         spawns: [
           { side: 'front', zOffset: -0.5, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.8, gangIdx: 6 },
-          { side: 'back', zOffset: 0.2, gangIdx: 2 },
-          { side: 'back', zOffset: -1.0, gangIdx: 8 },
+          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: 0.2, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 249, lockMinX: 241, lockMaxX: 266, label: '🚇 VAGÃO 3 — AXL, SLASH & SEGUNDO ANDORE!',
+        triggerX: 249, lockMinX: 241, lockMaxX: 266, label: '🚇 VAGÃO 3 — SLASH & SUB-CHEFE!',
         spawns: [
-          { side: 'front', zOffset: -0.8, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 8 },
-          { side: 'back', zOffset: -0.2, isSubBoss: true, gangIdx: 1 },
-          { side: 'back', zOffset: 1.0, gangIdx: 0 },
+          { side: 'front', zOffset: -0.8, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: -0.2, isSubBoss: true, gangIdx: 0 },
         ],
       },
       {
         triggerX: 280, lockMinX: 272, lockMaxX: 299, label: '🚇 PONTA ABERTA DO TREM — BARRIS, EL GADO & ANDORE!',
         spawns: [
-          { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 1 },
-          { side: 'front', zOffset: 0.9, gangIdx: 6 },
-          { side: 'back', zOffset: -0.8, gangIdx: 4 },
-          { side: 'front', zOffset: 0.2, gangIdx: 2 },
+          { side: 'front', zOffset: -0.3, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: -0.8, tier: 'mid', gangIdx: 2 },
         ],
       },
       {
         triggerX: 396, lockMinX: 386, lockMaxX: 412, label: '🛤️ GALERIA DE TIJOLOS VERDES — SAÍDA DOS TRILHOS!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 5 },
-          { side: 'front', zOffset: 0.7, gangIdx: 8 },
-          { side: 'back', zOffset: 0.1, gangIdx: 0 },
-          { side: 'front', zOffset: -0.3, gangIdx: 3 },
+          { side: 'front', zOffset: -1.0, tier: 'basic', gangIdx: 4 },
+          { side: 'front', zOffset: 0.7, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: 0.1, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: -0.3, tier: 'mid', gangIdx: 0 },
         ],
       },
       {
         triggerX: 425, lockMinX: 415, lockMaxX: 442, label: '🔥 GALERIA FINAL — NINJAS VERMELHOS & GUARDA DO RINGUE!',
         spawns: [
           { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 2 },
-          { side: 'back', zOffset: -0.3, gangIdx: 8 },
-          { side: 'front', zOffset: 0.4, gangIdx: 5 },
+          { side: 'front', zOffset: 0.9, isSubBoss: true, gangIdx: 1 },
+          { side: 'back', zOffset: -0.3, tier: 'mid', gangIdx: 1 },
         ],
       },
       {
@@ -625,45 +655,43 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
       {
         triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'WEST SIDE — CALÇADÃO DE NEON!',
         spawns: [
-          { side: 'front', zOffset: -0.8, gangIdx: 2 },
-          { side: 'front', zOffset: 0.9, gangIdx: 4 },
-          { side: 'back', zOffset: 0.2, gangIdx: 3 },
-          { side: 'front', zOffset: -0.1, gangIdx: 0 },
+          { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'basic', gangIdx: 4 },
+          { side: 'back', zOffset: 0.2, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: -0.1, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 39, lockMinX: 30, lockMaxX: 49, label: 'DENTRO DO RESTAURANTE — EMBOSCADA!',
+        triggerX: 39, lockMinX: 30, lockMaxX: 49, label: 'DENTRO DO RESTAURANTE — EMBOSCADA!', isAmbushWave: true,
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 4 },
-          { side: 'front', zOffset: 0.8, gangIdx: 8 },
-          { side: 'back', zOffset: -0.4, gangIdx: 1 },
-          { side: 'back', zOffset: 1.2, gangIdx: 7 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: -0.4, tier: 'basic', gangIdx: 1 },
+          { side: 'back', zOffset: 1.2, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
         triggerX: 62, lockMinX: 53, lockMaxX: 73, label: 'SALÃO DOS FUNDOS — ANDORE TE CERCOU!',
         spawns: [
           { side: 'front', zOffset: -0.4, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, gangIdx: 6 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 0 },
           { side: 'back', zOffset: 0.1, isSubBoss: true, gangIdx: 0 },
-          { side: 'back', zOffset: -1.0, gangIdx: 2 },
         ],
       },
       {
-        triggerX: 212, lockMinX: 204, lockMaxX: 240, label: '🤼 RINGUE RÚSTICO — ARENA DOS ANDORES!',
+        triggerX: 212, lockMinX: 204, lockMaxX: 240, label: '🤼 RINGUE RÚSTICO — ARENA DOS ANDORES!', isAmbushWave: true,
         spawns: [
           { side: 'front', zOffset: -0.7, isAndore: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.8, isAndore: true, gangIdx: 1 },
-          { side: 'back', zOffset: 0.0, isSubBoss: true, gangIdx: 1 },
         ],
       },
       {
         triggerX: 416, lockMinX: 407, lockMaxX: 427, label: 'SAÍDA DO RESTAURANTE — RUAS DE WEST SIDE!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 5 },
-          { side: 'front', zOffset: 0.7, gangIdx: 4 },
-          { side: 'back', zOffset: -0.2, gangIdx: 8 },
-          { side: 'back', zOffset: 1.1, gangIdx: 3 },
+          { side: 'front', zOffset: -1.0, tier: 'basic', gangIdx: 4 },
+          { side: 'front', zOffset: 0.7, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: -0.2, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: 1.1, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
@@ -671,24 +699,22 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         spawns: [
           { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.0, gangIdx: 6 },
-          { side: 'back', zOffset: -1.0, gangIdx: 7 },
+          { side: 'back', zOffset: 0.0, tier: 'heavy', gangIdx: 0 },
         ],
       },
       {
         triggerX: 484, lockMinX: 475, lockMaxX: 495, label: 'FESTIVAL CHINATOWN — ACROBATAS & ANDORE!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 2 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 0 },
           { side: 'front', zOffset: 0.8, isAndore: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.0, isSubBoss: true, gangIdx: 2 },
-          { side: 'back', zOffset: -1.2, gangIdx: 6 },
+          { side: 'back', zOffset: 0.0, isSubBoss: true, gangIdx: 1 },
         ],
       },
       {
         triggerX: 530, lockMinX: 520, lockMaxX: 548, label: '⚠️ FESTIVAL — CHEFE EDDIE!', isBossWave: true,
         spawns: [
-          { side: 'front', zOffset: -1.2, gangIdx: 6 },
-          { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 0 },
+          { side: 'front', zOffset: -1.2, tier: 'basic', gangIdx: 0 },
+          { side: 'back', zOffset: 1.2, tier: 'mid', gangIdx: 1 },
           { side: 'front', zOffset: 0.1, isBoss: true, gangIdx: 0 },
         ],
       },
@@ -700,19 +726,19 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
       {
         triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'ÁREA INDUSTRIAL — PORTÃO DA FÁBRICA!',
         spawns: [
-          { side: 'front', zOffset: -0.8, gangIdx: 4 },
-          { side: 'front', zOffset: 1.0, gangIdx: 5 },
-          { side: 'back', zOffset: 0.2, gangIdx: 3 },
-          { side: 'front', zOffset: -0.1, gangIdx: 2 },
+          { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: 1.0, tier: 'basic', gangIdx: 4 },
+          { side: 'back', zOffset: 0.2, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: -0.1, tier: 'mid', gangIdx: 0 },
         ],
       },
       {
         triggerX: 44, lockMinX: 35, lockMaxX: 54, label: 'FORNALHAS — CUIDADO COM AS ARMADILHAS!',
         spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 7 },
-          { side: 'front', zOffset: 0.6, gangIdx: 8 },
-          { side: 'back', zOffset: -0.3, gangIdx: 6 },
-          { side: 'back', zOffset: 1.2, gangIdx: 4 },
+          { side: 'front', zOffset: -1.1, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.6, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: -0.3, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: 1.2, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
@@ -720,51 +746,46 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         spawns: [
           { side: 'front', zOffset: -1.1, isFireSquad: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.0, isFireSquad: true, gangIdx: 0 },
           { side: 'back', zOffset: 0.3, isSubBoss: true, gangIdx: 0 },
         ],
       },
       {
         triggerX: 112, lockMinX: 103, lockMaxX: 122, label: 'ENGRENAGENS GIGANTES — ANDORES & GOLEM!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 10 },
-          { side: 'front', zOffset: 0.9, gangIdx: 11 },
-          { side: 'back', zOffset: 0.0, gangIdx: 12 },
-          { side: 'back', zOffset: -1.1, gangIdx: 2 },
+          { side: 'front', zOffset: -1.0, tier: 'heavy', gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 3 },
+          { side: 'back', zOffset: -1.1, tier: 'mid', gangIdx: 0 },
         ],
       },
       {
         triggerX: 152, lockMinX: 143, lockMaxX: 162, label: 'ELEVADOR SUBINDO — ONDA 1 (NINJAS!)', isElevatorWave: true,
         spawns: [
-          { side: 'drop', zOffset: -1.0, gangIdx: 6 },
-          { side: 'drop', zOffset: 0.8, gangIdx: 2 },
-          { side: 'drop', zOffset: -0.1, gangIdx: 4 },
-          { side: 'drop', zOffset: 1.3, gangIdx: 8 },
+          { side: 'drop', zOffset: -1.0, tier: 'heavy', gangIdx: 0 },
+          { side: 'drop', zOffset: 0.8, tier: 'mid', gangIdx: 0 },
+          { side: 'drop', zOffset: -0.1, tier: 'basic', gangIdx: 4 },
         ],
       },
       {
-        triggerX: 192, lockMinX: 183, lockMaxX: 202, label: 'ELEVADOR — ONDA 2 (SUB-CHEFES & SLASH!)', isElevatorWave: true,
+        triggerX: 192, lockMinX: 183, lockMaxX: 202, label: 'ELEVADOR — ONDA 2 (SUB-CHEFE & SLASH!)', isElevatorWave: true,
         spawns: [
           { side: 'drop', zOffset: -1.1, isSubBoss: true, gangIdx: 1 },
-          { side: 'drop', zOffset: 0.9, gangIdx: 8 },
-          { side: 'drop', zOffset: 0.0, gangIdx: 10 },
-          { side: 'drop', zOffset: 1.2, gangIdx: 7 },
+          { side: 'drop', zOffset: 0.9, tier: 'mid', gangIdx: 1 },
+          { side: 'drop', zOffset: 0.0, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 234, lockMinX: 225, lockMaxX: 245, label: 'ELEVADOR — ONDA 3 (GUARDA DO ROLENTO!)', isElevatorWave: true,
+        triggerX: 234, lockMinX: 225, lockMaxX: 245, label: 'ELEVADOR — ONDA 3 (GUARDA DO ROLENTO!)', isElevatorWave: true, isAmbushWave: true,
         spawns: [
-          { side: 'drop', zOffset: -1.0, gangIdx: 12 },
+          { side: 'drop', zOffset: -1.0, tier: 'heavy', gangIdx: 2 },
           { side: 'drop', zOffset: 0.8, isSubBoss: true, gangIdx: 2 },
-          { side: 'drop', zOffset: -0.2, gangIdx: 6 },
-          { side: 'drop', zOffset: 1.1, gangIdx: 4 },
+          { side: 'drop', zOffset: -0.2, tier: 'heavy', gangIdx: 0 },
         ],
       },
       {
         triggerX: 274, lockMinX: 264, lockMaxX: 292, label: '⚠️ TOPO DO ELEVADOR — ROLENTO!', isBossWave: true, isElevatorWave: true,
         spawns: [
-          { side: 'drop', zOffset: -1.1, gangIdx: 6 },
-          { side: 'drop', zOffset: 1.1, isSubBoss: true, gangIdx: 2 },
+          { side: 'drop', zOffset: -1.1, tier: 'heavy', gangIdx: 0 },
+          { side: 'drop', zOffset: 1.1, tier: 'mid', gangIdx: 1 },
           { side: 'drop', zOffset: 0.1, isBoss: true, gangIdx: 0 },
         ],
       },
@@ -776,55 +797,51 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
       {
         triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'BAY AREA — CAIS NORTE!',
         spawns: [
-          { side: 'front', zOffset: -0.8, gangIdx: 3 },
-          { side: 'front', zOffset: 1.0, gangIdx: 4 },
-          { side: 'back', zOffset: 0.2, gangIdx: 5 },
-          { side: 'front', zOffset: -0.2, gangIdx: 2 },
+          { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 3 },
+          { side: 'front', zOffset: 1.0, tier: 'basic', gangIdx: 4 },
+          { side: 'back', zOffset: 0.2, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: -0.2, tier: 'mid', gangIdx: 1 },
         ],
       },
       {
         triggerX: 46, lockMinX: 37, lockMaxX: 56, label: 'DOCAS DOS CONTÊINERES!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 8 },
-          { side: 'front', zOffset: 0.7, gangIdx: 10 },
-          { side: 'back', zOffset: -0.3, gangIdx: 6 },
-          { side: 'back', zOffset: 1.1, gangIdx: 9 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: 0.7, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: -0.3, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: 1.1, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 82, lockMinX: 73, lockMaxX: 92, label: '🔥 EMBOSCADA PORTUÁRIA — BANDO DE FOGO!',
+        triggerX: 82, lockMinX: 73, lockMaxX: 92, label: '🔥 EMBOSCADA PORTUÁRIA — BANDO DE FOGO!', isAmbushWave: true,
         spawns: [
           { side: 'front', zOffset: -1.1, isFireSquad: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.8, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.4, gangIdx: 4 },
-          { side: 'back', zOffset: -0.9, gangIdx: 7 },
+          { side: 'back', zOffset: 0.4, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: -0.9, tier: 'basic', gangIdx: 4 },
         ],
       },
       {
         triggerX: 122, lockMinX: 113, lockMaxX: 132, label: 'PÁTIO DOS GUINDASTES — SUB-CHEFE & GOLEM!',
         spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 11 },
+          { side: 'front', zOffset: -1.1, tier: 'heavy', gangIdx: 3 },
           { side: 'front', zOffset: 0.7, isSubBoss: true, gangIdx: 0 },
-          { side: 'back', zOffset: -0.3, gangIdx: 12 },
-          { side: 'back', zOffset: 1.1, gangIdx: 6 },
+          { side: 'back', zOffset: -0.3, tier: 'heavy', gangIdx: 0 },
         ],
       },
       {
         triggerX: 164, lockMinX: 155, lockMaxX: 174, label: 'ARMAZÉM PESADO — DUPLA DE GORDINHOS!',
         spawns: [
-          { side: 'front', zOffset: -1.0, gangIdx: 4 },
-          { side: 'front', zOffset: 0.9, gangIdx: 4 },
-          { side: 'back', zOffset: 0.0, gangIdx: 8 },
-          { side: 'back', zOffset: -1.1, gangIdx: 5 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: 0.0, tier: 'mid', gangIdx: 1 },
         ],
       },
       {
         triggerX: 206, lockMinX: 197, lockMaxX: 216, label: 'PASSARELA DO PÍER — ACROBATAS & NINJAS!',
         spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 2 },
-          { side: 'front', zOffset: 0.8, gangIdx: 6 },
-          { side: 'back', zOffset: -0.2, gangIdx: 6 },
+          { side: 'front', zOffset: -1.1, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 0.8, tier: 'heavy', gangIdx: 0 },
           { side: 'back', zOffset: 1.0, isSubBoss: true, gangIdx: 1 },
         ],
       },
@@ -833,23 +850,21 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         spawns: [
           { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.1, gangIdx: 10 },
-          { side: 'back', zOffset: -1.1, gangIdx: 9 },
+          { side: 'back', zOffset: 0.1, tier: 'heavy', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 292, lockMinX: 283, lockMaxX: 304, label: 'ESCOLTA REAL DO BELGER — IRMÃOS ANDORE & SUB-CHEFES!',
+        triggerX: 292, lockMinX: 283, lockMaxX: 304, label: 'ESCOLTA REAL DO BELGER — IRMÃOS ANDORE & SUB-CHEFE!',
         spawns: [
-          { side: 'front', zOffset: -1.1, gangIdx: 12 },
+          { side: 'front', zOffset: -1.1, isAndore: true, gangIdx: 1 },
           { side: 'front', zOffset: 0.8, isSubBoss: true, gangIdx: 2 },
-          { side: 'back', zOffset: -0.2, gangIdx: 10 },
-          { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 0 },
+          { side: 'back', zOffset: -0.2, isAndore: true, gangIdx: 0 },
         ],
       },
       {
         triggerX: 334, lockMinX: 324, lockMaxX: 352, label: '⚠️ IATE DO CHEFE FINAL — BELGER!', isBossWave: true,
         spawns: [
-          { side: 'front', zOffset: -1.2, gangIdx: 8 },
+          { side: 'front', zOffset: -1.2, tier: 'mid', gangIdx: 1 },
           { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 1 },
           { side: 'front', zOffset: 0.0, isBoss: true, gangIdx: 0 },
         ],
@@ -862,31 +877,31 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
     {
       triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'ONDA 1 — AVANÇO NO BIOMA!',
       spawns: [
-        { side: 'front', zOffset: -0.8, gangIdx: 3 },
-        { side: 'front', zOffset: 1.0, gangIdx: 5 },
-        { side: 'back', zOffset: 0.2, gangIdx: 4 },
+        { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 0 },
+        { side: 'front', zOffset: 1.0, tier: 'basic', gangIdx: 1 },
+        { side: 'back', zOffset: 0.2, tier: 'basic', gangIdx: 2 },
       ],
     },
     {
-      triggerX: Math.round(len * 0.34), lockMinX: Math.round(len * 0.26), lockMaxX: Math.round(len * 0.42), label: 'ONDA 2 — CERCO PESADO!',
+      triggerX: Math.round(len * 0.34), lockMinX: Math.round(len * 0.26), lockMaxX: Math.round(len * 0.42), label: 'ONDA 2 — CERCO INTERMEDIÁRIO!',
       spawns: [
-        { side: 'front', zOffset: -1.2, gangIdx: 7 },
-        { side: 'front', zOffset: 0.6, gangIdx: 4 },
-        { side: 'back', zOffset: -0.4, gangIdx: 5 },
+        { side: 'front', zOffset: -1.2, tier: 'mid', gangIdx: 0 },
+        { side: 'front', zOffset: 0.6, tier: 'mid', gangIdx: 1 },
+        { side: 'back', zOffset: -0.4, tier: 'basic', gangIdx: 2 },
       ],
     },
     {
       triggerX: Math.round(len * 0.60), lockMinX: Math.round(len * 0.52), lockMaxX: Math.round(len * 0.68), label: 'ONDA 3 — SUB-CHEFE DO BIOMA!',
       spawns: [
         { side: 'front', zOffset: -1.0, isSubBoss: true, gangIdx: 1 },
-        { side: 'front', zOffset: 0.7, gangIdx: 9 },
-        { side: 'back', zOffset: 0.1, gangIdx: 8 },
+        { side: 'front', zOffset: 0.7, tier: 'heavy', gangIdx: 0 },
+        { side: 'back', zOffset: 0.1, tier: 'mid', gangIdx: 1 },
       ],
     },
     {
       triggerX: Math.round(len * 0.84), lockMinX: Math.round(len * 0.76), lockMaxX: len - 4, label: `⚠️ ${getStageMeta(stageId).bossDisplayName.toUpperCase()} — CHEFE!`, isBossWave: true,
       spawns: [
-        { side: 'front', zOffset: -1.2, gangIdx: 8 },
+        { side: 'front', zOffset: -1.2, tier: 'mid', gangIdx: 1 },
         { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 2 },
         { side: 'front', zOffset: 0.1, isBoss: true, gangIdx: 0 },
       ],
@@ -2094,6 +2109,14 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     addWoodBarrelProp(55.5, 0.9, 1.0, 'meat', true);
     addWoodBarrelProp(472.5, -0.9, 1.0, 'potion', true);
     addWoodBarrelProp(516.0, 0.85, 1.0, 'meat', true);
+
+    // Varanda/sacada elevada do Festival Chinatown fora do alcance do jogador onde Eddie sai do campo para convocar reforços!
+    const eddieBalcony = new THREE.Mesh(new THREE.BoxGeometry(6.8, 1.35, 2.2), new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.75 }));
+    eddieBalcony.position.set(545.5, 0.68, -3.95); scene.add(eddieBalcony);
+    const eddieRail = new THREE.Mesh(new THREE.BoxGeometry(6.9, 0.25, 0.18), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.4 }));
+    eddieRail.position.set(545.5, 1.48, -2.92); scene.add(eddieRail);
+    refs.bossSeatPos = { x: 545.5, y: 1.38, z: -3.75 };
+
     animCallbacks.push((t) => {
       lanterns.forEach((l, i) => { l.position.y = 4.2 + Math.sin(t * 4 + i) * 0.18; });
     });
@@ -2147,6 +2170,27 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     }
     scene.add(beamsGroup);
     refs.elevatorBeamsGroup = beamsGroup;
+
+    // Plataforma metálica superior inalcançável + escada industrial onde Rolento salta para chamar reforços!
+    const rolentoCatwalk = new THREE.Mesh(
+      new THREE.BoxGeometry(7.4, 0.36, 2.3),
+      new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.72, roughness: 0.38 })
+    );
+    rolentoCatwalk.position.set(284.5, 3.25, -2.95); scene.add(rolentoCatwalk);
+    const rolentoGuardRail = new THREE.Mesh(
+      new THREE.BoxGeometry(7.4, 0.22, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.5 })
+    );
+    rolentoGuardRail.position.set(284.5, 4.05, -1.88); scene.add(rolentoGuardRail);
+    [-3.4, 0, 3.4].forEach((ox) => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.85, 0.16), new THREE.MeshStandardMaterial({ color: 0x3f3f46, metalness: 0.7 }));
+      post.position.set(284.5 + ox, 3.65, -1.88); scene.add(post);
+    });
+    for (let ly = 0.4; ly <= 3.1; ly += 0.45) {
+      const rung = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 0.1), new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.6 }));
+      rung.position.set(287.8, ly, -3.15); scene.add(rung);
+    }
+    refs.bossSeatPos = { x: 284.5, y: 3.45, z: -2.85 };
 
     for (let x = -2; x < 138; x += 6.5) {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(6.0, 7.2, 2.5), new THREE.MeshStandardMaterial({ map: makeBrickTexture('#451a03', '#271206') }));
@@ -2247,6 +2291,9 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
     const deck = new THREE.Mesh(new THREE.BoxGeometry(18, 2.4, 3.4), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
     deck.position.set(1, 3.6, 0); yacht.add(deck);
     yacht.position.set(len - 22, -0.3, -8.2); scene.add(yacht);
+    const yachtBridge = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.2, 2.2), new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.25 }));
+    yachtBridge.position.set(346.5, 1.1, -3.7); scene.add(yachtBridge);
+    refs.bossSeatPos = { x: 346.5, y: 2.25, z: -3.45 };
 
     [16, 54, 98, 148, 196, 246, 298].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
     [32, 76, 128, 174, 224, 274, 316].forEach(cx => addTrafficCone(cx, 0, -1.65));

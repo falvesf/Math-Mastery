@@ -279,12 +279,26 @@ export function calculateTotalStats(equippedItems: any[], distributedStats?: Rec
     let itemDefense = 0;
     if (item.baseAttributeType === 'defense') itemDefense += effBase;
 
+    if (item.baseAttributeType === 'xp') stats.xp += effBase;
+    else if (item.baseAttributeType === 'coins') stats.coins += effBase;
+    else if (item.baseAttributeType === 'vitality') stats.vitality += effBase;
+    else if (item.baseAttributeType === 'fortitude') stats.fortitude += effBase;
+    else if (item.baseAttributeType === 'persuasion') stats.persuasion += effBase;
+
     let itemDamagePct = 0;
 
     // Extra Adds (ou fixedAttributes caso adds ainda não existam no doc)
-    const rawAdds: ItemAdd[] = (item.adds && Array.isArray(item.adds) && item.adds.length > 0)
-      ? item.adds
-      : (item.fixedAttributes && Array.isArray(item.fixedAttributes) ? item.fixedAttributes : []);
+    let parsedAdds = item.adds;
+    if (typeof parsedAdds === 'string') {
+      try { parsedAdds = JSON.parse(parsedAdds); } catch { parsedAdds = []; }
+    }
+    let parsedFixed = item.fixedAttributes;
+    if (typeof parsedFixed === 'string') {
+      try { parsedFixed = JSON.parse(parsedFixed); } catch { parsedFixed = []; }
+    }
+    const rawAdds: ItemAdd[] = (parsedAdds && Array.isArray(parsedAdds) && parsedAdds.length > 0)
+      ? parsedAdds
+      : (parsedFixed && Array.isArray(parsedFixed) ? parsedFixed : []);
 
     rawAdds.forEach((add: ItemAdd) => {
       const v = getAddEffectiveValue(add, item.forgeLevel || 0);
