@@ -9,6 +9,7 @@ export type ArcadeStageId =
   | 'stage4_industrial'
   | 'bonus_glass'
   | 'stage5_bay'
+  | 'stage6_uptown'
   | 'plains'
   | 'nether'
   | 'desert'
@@ -32,7 +33,8 @@ export const CAMPAIGN_ORDER: StageOrderItem[] = [
   { id: 'stage3_westside', label: '🌃 Estágio 3: Ponte, Bar, Ringue dos Andores & West Side (Eddie)', length: 432, bossHpMultiplier: 13, bossDisplayName: 'Eddie' },
   { id: 'stage4_industrial', label: '🏭 Estágio 4: Indústria, Elevador & Rolento', length: 300, bossHpMultiplier: 16, bossDisplayName: 'Rolento' },
   { id: 'bonus_glass', label: '🪟 Bônus 2: Quebre as Vidraças!', length: 46, bossHpMultiplier: 1, bossDisplayName: 'Vidraças', isBonus: true, bonusKind: 'glass' },
-  { id: 'stage5_bay', label: '⚓ Estágio 5: Bay Area & Chefe Final', length: 360, bossHpMultiplier: 20, bossDisplayName: 'Belger' },
+  { id: 'stage5_bay', label: '🌊 Estágio 5: Bay Area & Abigail', length: 340, bossHpMultiplier: 18, bossDisplayName: 'Abigail' },
+  { id: 'stage6_uptown', label: '🏙️ Estágio 6: Up Town & Belger (Chefe Final)', length: 340, bossHpMultiplier: 22, bossDisplayName: 'Belger' },
   { id: 'plains', label: '🌿 Bioma: Planícies', length: 160, bossHpMultiplier: 7, bossDisplayName: 'Guardião das Planícies' },
   { id: 'nether', label: '🔥 Bioma: Nether', length: 160, bossHpMultiplier: 10, bossDisplayName: 'Senhor do Nether' },
   { id: 'desert', label: '🏜️ Bioma: Deserto', length: 160, bossHpMultiplier: 8, bossDisplayName: 'Faraó de Areia' },
@@ -179,6 +181,7 @@ export function getNextCampaignStage(id: ArcadeStageId): ArcadeStageId | null {
     'stage4_industrial',
     'bonus_glass',
     'stage5_bay',
+    'stage6_uptown',
   ];
   const idx = mainOrder.indexOf(id);
   if (idx >= 0 && idx < mainOrder.length - 1) return mainOrder[idx + 1];
@@ -197,7 +200,8 @@ export function getCampaignStageNumber(stageId: ArcadeStageId): number {
   if (stageId === 'stage2_subway' || stageId === 'bonus_car' || stageId === 'desert') return 2;
   if (stageId === 'stage3_westside' || stageId === 'nether') return 3;
   if (stageId === 'stage4_industrial' || stageId === 'bonus_glass' || stageId === 'snow') return 4;
-  return 5;
+  if (stageId === 'stage5_bay') return 5;
+  return 6;
 }
 
 export type EnemyMoveProfile = 'punk' | 'agile' | 'slash' | 'giant' | 'rusher' | 'ninja_knife' | 'ninja_fire';
@@ -287,7 +291,8 @@ const GANG_ARCHETYPES: {
     { name: 'Jake', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 0.98, speedMul: 0.98, hpMul: 1.08, atkMul: 0.95, defBonus: 8, hairStyle: 'short', shirt: '#2563eb', pants: '#1e293b', hair: '#78350f', skin: '#f1c27d' },
     { name: 'Simons', role: 'punk', tier: 'basic', minStage: 1, moveProfile: 'punk', gender: 'male', scale: 1.0, speedMul: 0.96, hpMul: 1.15, atkMul: 1.0, defBonus: 9, hairStyle: 'short', shirt: '#78350f', pants: '#334155', hair: '#1c1917', skin: '#d97706' },
     { name: 'Two-P', role: 'punk', tier: 'basic', minStage: 2, moveProfile: 'punk', gender: 'male', scale: 0.96, speedMul: 1.08, hpMul: 1.05, atkMul: 0.98, defBonus: 8, hairStyle: 'spiky', shirt: '#ea580c', pants: '#15803d', hair: '#f97316', skin: '#e0ac69' },
-    { name: 'Roxy (Poison)', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.32, hpMul: 0.95, atkMul: 1.05, defBonus: 7, hairStyle: 'long', shirt: '#ec4899', pants: '#312e81', hair: '#f43f5e', skin: '#ffdbac' },
+    { name: 'Poison', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.89, speedMul: 1.32, hpMul: 0.95, atkMul: 1.05, defBonus: 7, hairStyle: 'long', shirt: '#f8fafc', pants: '#1d4ed8', hair: '#ec4899', skin: '#ffdbac' },
+    { name: 'Roxy', role: 'agile', tier: 'mid', minStage: 1, moveProfile: 'agile', gender: 'female', scale: 0.90, speedMul: 1.38, hpMul: 1.05, atkMul: 1.15, defBonus: 9, hairStyle: 'long', shirt: '#1e293b', pants: '#b91c1c', hair: '#f97316', skin: '#f1c27d' },
     { name: 'Slash', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'slash', gender: 'male', scale: 1.14, speedMul: 0.92, hpMul: 1.5, atkMul: 1.25, defBonus: 14, hairStyle: 'short', shirt: '#7c3aed', pants: '#18181b', hair: '#e5e7eb', skin: '#8d5524' },
     { name: 'Wong Who (Gordinho)', role: 'brawler', tier: 'mid', minStage: 1, moveProfile: 'rusher', gender: 'male', scale: 1.02, widthScale: 1.38, speedMul: 0.95, hpMul: 1.48, atkMul: 1.22, defBonus: 14, hairStyle: 'short', shirt: '#f59e0b', pants: '#1e293b', hair: '#111827', skin: '#e0ac69' },
     { name: 'Holly Wood (Ninja)', role: 'agile', tier: 'heavy', minStage: 2, moveProfile: 'ninja_knife', gender: 'male', scale: 0.94, speedMul: 1.38, hpMul: 1.1, atkMul: 1.18, defBonus: 10, hairStyle: 'short', shirt: '#1e293b', pants: '#0f172a', hair: '#09090b', skin: '#f1c27d' },
@@ -826,7 +831,7 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
   if (stageId === 'stage5_bay') {
     return [
       {
-        triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'BAY AREA — CAIS NORTE!',
+        triggerX: 14, lockMinX: 3, lockMaxX: 24, label: 'BAY AREA — ORLA DA BAÍA & BANCOS!',
         spawns: [
           { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 3 },
           { side: 'front', zOffset: 1.0, tier: 'basic', gangIdx: 4 },
@@ -835,57 +840,87 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         ],
       },
       {
-        triggerX: 46, lockMinX: 37, lockMaxX: 56, label: 'DOCAS DOS CONTÊINERES!',
+        triggerX: 58, lockMinX: 48, lockMaxX: 70, label: 'CABINES TELEFÔNICAS & BANHEIROS PÚBLICOS!',
         spawns: [
-          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 1 },
-          { side: 'front', zOffset: 0.7, tier: 'heavy', gangIdx: 0 },
-          { side: 'back', zOffset: -0.3, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: -0.3, tier: 'mid', gangIdx: 3 },
           { side: 'back', zOffset: 1.1, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 82, lockMinX: 73, lockMaxX: 92, label: '🔥 EMBOSCADA PORTUÁRIA — BANDO DE FOGO!', isAmbushWave: true,
+        triggerX: 108, lockMinX: 98, lockMaxX: 120, label: '🔥 ESTACIONAMENTO DE MOTOS — EMBOSCADA DE FOGO!', isAmbushWave: true,
         spawns: [
           { side: 'front', zOffset: -1.1, isFireSquad: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.8, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.4, tier: 'mid', gangIdx: 2 },
+          { side: 'back', zOffset: 0.4, tier: 'mid', gangIdx: 1 },
           { side: 'back', zOffset: -0.9, tier: 'basic', gangIdx: 4 },
         ],
       },
       {
-        triggerX: 122, lockMinX: 113, lockMaxX: 132, label: 'PÁTIO DOS GUINDASTES — SUB-CHEFE & GOLEM!',
+        triggerX: 162, lockMinX: 152, lockMaxX: 174, label: 'CALÇADÃO LESTE — POISON, ROXY & GORDINHOS!',
         spawns: [
-          { side: 'front', zOffset: -1.1, tier: 'heavy', gangIdx: 3 },
-          { side: 'front', zOffset: 0.7, isSubBoss: true, gangIdx: 0 },
-          { side: 'back', zOffset: -0.3, tier: 'heavy', gangIdx: 0 },
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: 0.0, tier: 'mid', gangIdx: 3 },
         ],
       },
       {
-        triggerX: 164, lockMinX: 155, lockMaxX: 174, label: 'ARMAZÉM PESADO — DUPLA DE GORDINHOS!',
+        triggerX: 220, lockMinX: 210, lockMaxX: 234, label: 'VISTA DO OCEANO — FAMÍLIA ANDORE!',
         spawns: [
-          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
-          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 2 },
-          { side: 'back', zOffset: 0.0, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: -1.0, isAndore: true, gangIdx: 1 },
+          { side: 'front', zOffset: 0.8, isSubBoss: true, gangIdx: 0 },
+          { side: 'back', zOffset: -0.2, isAndore: true, gangIdx: 0 },
         ],
       },
       {
-        triggerX: 206, lockMinX: 197, lockMaxX: 216, label: 'PASSARELA DO PÍER — ACROBATAS & NINJAS!',
-        spawns: [
-          { side: 'front', zOffset: -1.1, tier: 'mid', gangIdx: 0 },
-          { side: 'front', zOffset: 0.8, tier: 'heavy', gangIdx: 0 },
-          { side: 'back', zOffset: 1.0, isSubBoss: true, gangIdx: 1 },
-        ],
-      },
-      {
-        triggerX: 248, lockMinX: 239, lockMaxX: 258, label: '🔥 CONVESES — SEGUNDO BANDO DE FOGO!',
+        triggerX: 280, lockMinX: 270, lockMaxX: 294, label: '🗽 ESTÁTUA DA LIBERDADE — GUARDA DE ABIGAIL!',
         spawns: [
           { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.1, tier: 'heavy', gangIdx: 1 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 1 },
+          { side: 'back', zOffset: 0.1, tier: 'mid', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 292, lockMinX: 283, lockMaxX: 304, label: 'ESCOLTA REAL DO BELGER — IRMÃOS ANDORE & SUB-CHEFE!',
+        triggerX: 318, lockMinX: 308, lockMaxX: 336, label: '💢 BAY AREA — CHEFE ABIGAIL EM FÚRIA!', isBossWave: true,
+        spawns: [
+          { side: 'front', zOffset: -1.1, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: 1.1, tier: 'mid', gangIdx: 1 },
+          { side: 'front', zOffset: 0.0, isBoss: true, gangIdx: 0 },
+        ],
+      },
+    ];
+  }
+
+  if (stageId === 'stage6_uptown') {
+    return [
+      {
+        triggerX: 14, lockMinX: 3, lockMaxX: 24, label: 'UP TOWN — AVENIDA DE LUXO!',
+        spawns: [
+          { side: 'front', zOffset: -0.8, tier: 'mid', gangIdx: 0 },
+          { side: 'front', zOffset: 1.0, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: 0.2, tier: 'heavy', gangIdx: 0 },
+          { side: 'front', zOffset: -0.2, tier: 'basic', gangIdx: 4 },
+        ],
+      },
+      {
+        triggerX: 68, lockMinX: 58, lockMaxX: 80, label: 'HALL DOS ARRANHA-CÉUS — SLASH & NINJAS!',
+        spawns: [
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: -0.3, isSubBoss: true, gangIdx: 0 },
+        ],
+      },
+      {
+        triggerX: 132, lockMinX: 122, lockMaxX: 144, label: '🔥 TAPETE VERMELHO — BANDO DE FOGO!', isAmbushWave: true,
+        spawns: [
+          { side: 'front', zOffset: -1.1, isFireSquad: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.8, isFireSquad: true, gangIdx: 0 },
+          { side: 'back', zOffset: 0.4, tier: 'mid', gangIdx: 3 },
+        ],
+      },
+      {
+        triggerX: 204, lockMinX: 194, lockMaxX: 218, label: 'ESCOLTA REAL DO BELGER — IRMÃOS ANDORE!',
         spawns: [
           { side: 'front', zOffset: -1.1, isAndore: true, gangIdx: 1 },
           { side: 'front', zOffset: 0.8, isSubBoss: true, gangIdx: 2 },
@@ -893,7 +928,15 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         ],
       },
       {
-        triggerX: 334, lockMinX: 324, lockMaxX: 352, label: '⚠️ IATE DO CHEFE FINAL — BELGER!', isBossWave: true,
+        triggerX: 268, lockMinX: 258, lockMaxX: 282, label: 'COBERTURA PANORÂMICA — GUARDA FINAL!',
+        spawns: [
+          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 1 },
+          { side: 'back', zOffset: 0.1, isSubBoss: true, gangIdx: 1 },
+        ],
+      },
+      {
+        triggerX: 316, lockMinX: 306, lockMaxX: 336, label: '⚠️ COBERTURA DE UP TOWN — CHEFE FINAL BELGER!', isBossWave: true,
         spawns: [
           { side: 'front', zOffset: -1.2, tier: 'mid', gangIdx: 1 },
           { side: 'back', zOffset: 1.2, isSubBoss: true, gangIdx: 1 },
@@ -2389,44 +2432,118 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
   }
 
   if (stageId === 'stage5_bay') {
-    scene.background = new THREE.Color(0x09152b);
-    scene.fog = new THREE.FogExp2(0x09152b, 0.008);
-    const pier = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 7.8), new THREE.MeshStandardMaterial({ map: makeSidewalkTexture(), color: 0x78716c }));
-    pier.rotation.x = -Math.PI / 2; pier.position.set(len / 2, 0, 0.5); scene.add(pier);
+    scene.background = new THREE.Color(0x0b2240);
+    scene.fog = new THREE.FogExp2(0x0b2240, 0.0068);
+
+    // Chão de tijolos litorâneo + faixa de gramado e cerca metálica na orla do Oceano Atlântico
+    const brickPromenade = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 7.6), new THREE.MeshStandardMaterial({ map: makeSidewalkTexture(), color: 0xb45309, roughness: 0.85 }));
+    brickPromenade.rotation.x = -Math.PI / 2; brickPromenade.position.set(len / 2, 0, 0.5); scene.add(brickPromenade);
+    const grassStrip = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 2.2), new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.9 }));
+    grassStrip.rotation.x = -Math.PI / 2; grassStrip.position.set(len / 2, 0.01, -4.4); scene.add(grassStrip);
     const front = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 6), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
     front.rotation.x = -Math.PI / 2; front.position.set(len / 2, 0.01, 7.2); scene.add(front);
 
-    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(len + 56, 26), new THREE.MeshBasicMaterial({ color: 0x0c4a6e }));
-    ocean.rotation.x = -Math.PI / 2; ocean.position.set(len / 2, -0.5, -16); scene.add(ocean);
+    // Oceano Atlântico ao fundo com ondas animadas
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(len + 60, 30), new THREE.MeshBasicMaterial({ color: 0x0369a1 }));
+    ocean.rotation.x = -Math.PI / 2; ocean.position.set(len / 2, -0.5, -18); scene.add(ocean);
     const waves: THREE.Mesh[] = [];
     for (let wx = 0; wx < len + 25; wx += 6) {
-      const wv = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 0.6), new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 }));
-      wv.position.set(wx, -0.35, -7.5 - (wx % 12) * 0.4); scene.add(wv);
+      const wv = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 0.6), new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.5 }));
+      wv.position.set(wx, -0.35, -7.8 - (wx % 12) * 0.4); scene.add(wv);
       waves.push(wv);
     }
-    for (let x = -2; x < len - 32; x += 8) {
-      const container = new THREE.Mesh(new THREE.BoxGeometry(5.4, 2.8, 2.4), new THREE.MeshStandardMaterial({ color: x % 16 === 0 ? 0xb91c1c : 0x0369a1 }));
-      container.position.set(x, 1.4, -5.2); scene.add(container);
-    }
-    const yacht = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(28, 2.8, 4.4), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
-    hull.position.y = 1.4; yacht.add(hull);
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(18, 2.4, 3.4), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
-    deck.position.set(1, 3.6, 0); yacht.add(deck);
-    yacht.position.set(len - 22, -0.3, -8.2); scene.add(yacht);
-    const yachtBridge = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.2, 2.2), new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.25 }));
-    yachtBridge.position.set(346.5, 1.1, -3.7); scene.add(yachtBridge);
-    refs.bossSeatPos = { x: 346.5, y: 2.25, z: -3.45 };
 
-    [16, 54, 98, 148, 196, 246, 298].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
-    [32, 76, 128, 174, 224, 274, 316].forEach(cx => addTrafficCone(cx, 0, -1.65));
-    [40, 116, 188, 266].forEach(vx => addSteamVent(vx, 0, -2.8));
-    addWoodBarrelProp(112.0, 0.85, 1.0, 'potion', true);
-    addWoodBarrelProp(280.0, -0.8, 1.0, 'meat', true);
-    addWoodBarrelProp(320.0, 0.75, 1.0, 'potion', true);
+    // Cerca metálica da orla + árvores + bancos de praça quebráveis
+    for (let rx = -4; rx <= len + 20; rx += 3.2) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.15, 0.12), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
+      post.position.set(rx, 0.58, -3.55); scene.add(post);
+    }
+    const coastRail = new THREE.Mesh(new THREE.BoxGeometry(len + 30, 0.1, 0.12), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.6 }));
+    coastRail.position.set(len / 2, 1.12, -3.55); scene.add(coastRail);
+
+    // Cidade do outro lado da baía no início da fase
+    addCitySkylineStrip(-4, 120, -16);
+
+    // Árvores e bancos de praça depredados ao longo da Bay Area
+    for (let tx = 8; tx < len - 24; tx += 18) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 2.2, 8), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+      trunk.position.set(tx, 1.1, -4.6); scene.add(trunk);
+      const leaves = new THREE.Mesh(new THREE.DodecahedronGeometry(1.45, 0), new THREE.MeshStandardMaterial({ color: 0x16a34a }));
+      leaves.position.set(tx, 2.8, -4.6); scene.add(leaves);
+    }
+
+    // 3 cabines telefônicas + banheiros públicos + área de estacionamento de motos
+    [42, 68, 92].forEach((bx) => {
+      const booth = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.5, 1.1), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+      frame.position.y = 1.25; booth.add(frame);
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.8, 1.14), new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.55 }));
+      glass.position.y = 1.3; booth.add(glass);
+      booth.position.set(bx, 0, -2.9); scene.add(booth);
+    });
+    const restroom = new THREE.Mesh(new THREE.BoxGeometry(8.5, 3.2, 2.6), new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85 }));
+    restroom.position.set(76, 1.6, -4.8); scene.add(restroom);
+    [104, 108, 112].forEach((mx) => {
+      const moto = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.85, 0.65), new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.5 }));
+      moto.position.set(mx, 0.45, -2.7); scene.add(moto);
+    });
+
+    // Estátua da Liberdade visível no meio do oceano na reta final (arena do Abigail)!
+    const liberty = new THREE.Group();
+    const ped = new THREE.Mesh(new THREE.BoxGeometry(3.2, 4.2, 3.2), new THREE.MeshStandardMaterial({ color: 0x78716c }));
+    ped.position.y = 2.1; liberty.add(ped);
+    const statue = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 1.05, 5.2, 10), new THREE.MeshStandardMaterial({ color: 0x2dd4bf }));
+    statue.position.y = 6.6; liberty.add(statue);
+    const torch = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+    torch.position.set(0.65, 9.8, 0); liberty.add(torch);
+    liberty.position.set(len - 20, -0.4, -17.5); scene.add(liberty);
+
+    [18, 56, 100, 152, 206, 260].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
+    [32, 82, 134, 184, 240, 290].forEach(cx => addTrafficCone(cx, 0, -1.65));
+    addWoodBarrelProp(148.0, 0.85, 1.0, 'potion', true);
+    addWoodBarrelProp(268.0, -0.8, 1.0, 'meat', true);
+    addWoodBarrelProp(302.0, 0.75, 1.0, 'potion', true);
+
     animCallbacks.push((t) => {
       waves.forEach((w, i) => { w.position.y = -0.35 + Math.sin(t * 3 + i) * 0.12; });
-      yacht.position.y = -0.3 + Math.sin(t * 2) * 0.12;
+    });
+    return refs;
+  }
+
+  if (stageId === 'stage6_uptown') {
+    scene.background = new THREE.Color(0x090d1f);
+    scene.fog = new THREE.FogExp2(0x090d1f, 0.0065);
+
+    const marbleFloor = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 7.6), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.2 }));
+    marbleFloor.rotation.x = -Math.PI / 2; marbleFloor.position.set(len / 2, 0, 0.5); scene.add(marbleFloor);
+    const carpet = new THREE.Mesh(new THREE.PlaneGeometry(len + 20, 2.8), new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.75 }));
+    carpet.rotation.x = -Math.PI / 2; carpet.position.set(len / 2, 0.015, 0.5); scene.add(carpet);
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(len + 46, 6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    front.rotation.x = -Math.PI / 2; front.position.set(len / 2, 0.01, 7.2); scene.add(front);
+
+    // Arranha-céus luxuosos de Up Town + letreiros dourados
+    addCitySkylineStrip(-6, len + 20, -10.5);
+    const chandeliers: THREE.Mesh[] = [];
+    for (let x = 4; x < len; x += 12) {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 5.2, 10), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.35 }));
+      pillar.position.set(x, 2.6, -4.1); scene.add(pillar);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.38, 10, 10), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+      lamp.position.set(x, 4.9, -2.5); scene.add(lamp);
+      chandeliers.push(lamp);
+    }
+
+    // Cobertura panorâmica do Belger no final de Up Town
+    const penthouseBalcony = new THREE.Mesh(new THREE.BoxGeometry(7.2, 1.5, 2.2), new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.3 }));
+    penthouseBalcony.position.set(328.0, 0.75, -3.7); scene.add(penthouseBalcony);
+    refs.bossSeatPos = { x: 328.0, y: 1.55, z: -3.45 };
+
+    [20, 62, 110, 166, 222, 276].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
+    addWoodBarrelProp(120.0, 0.85, 1.0, 'potion', true);
+    addWoodBarrelProp(250.0, -0.8, 1.0, 'meat', true);
+    addWoodBarrelProp(300.0, 0.75, 1.0, 'potion', true);
+
+    animCallbacks.push((t) => {
+      chandeliers.forEach((l, i) => { l.scale.setScalar(0.92 + Math.sin(t * 4 + i) * 0.08); });
     });
     return refs;
   }

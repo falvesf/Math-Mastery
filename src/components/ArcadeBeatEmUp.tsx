@@ -1012,6 +1012,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       stage3_westside: 3,
       stage4_industrial: 4,
       stage5_bay: 5,
+      stage6_uptown: 6,
     };
 
     let autoWalkExitTo: { x: number; z: number } | null = null;
@@ -3781,11 +3782,20 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             en.windupUntil = 0;
             en.dashUntil = 0;
             en.closePlayerSince = 0;
+          } else if (en.isBoss && stageId === 'stage5_bay' && !isEnemyFrozen && !isEnemyKnockedDown && now >= en.piledriverCdUntil && en.hp < en.maxHp * 0.88 && now >= en.dashUntil) {
+            // Abigail (Estágio 5 - Bay Area): entra em Fúria ficando vermelho e avança com golpe avassalador!
+            en.piledriverCdUntil = now + 5200;
+            en.facing = playerState.x >= en.x ? 1 : -1;
+            en.plannedMove = 'belly_charge';
+            en.dashVx = en.facing * 8.2;
+            en.dashUntil = now + 1050;
+            en.armorUntil = now + 1350;
+            spawnFloat('💢 ABIGAIL EM FÚRIA!', '#ef4444', new THREE.Vector3(en.x, en.y + 2.8, en.z), camera);
           } else if (now < en.dashUntil && !isEnemyFrozen && !isEnemyKnockedDown) {
             isMoving = true;
-            // Golpes especiais em disparada (Cabeçada dos Gordinhos, Barrigada do Andore, Katana do Sodom, armas)
+            // Golpes especiais em disparada (Cabeçada dos Gordinhos, Barrigada do Andore, Fúria do Abigail, Katana do Sodom)
             // acertam e DERRUBAM inclusive os aliados na frente!
-            const isSpecialDash = en.plannedMove === 'headbutt' || en.plannedMove === 'belly_charge' || Boolean(en.heldWeapon) || (en.isBoss && stageId === 'stage2_subway');
+            const isSpecialDash = en.plannedMove === 'headbutt' || en.plannedMove === 'belly_charge' || Boolean(en.heldWeapon) || (en.isBoss && (stageId === 'stage2_subway' || stageId === 'stage5_bay'));
             if (isSpecialDash) {
               aliveEnemies.forEach((other) => {
                 if (other.id === en.id || other.koUntil > 0 || other.bossRetreatPhase !== 'none' || now < other.knockdownUntil) return;
@@ -5073,13 +5083,13 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         )}
 
         {roundClearInfo && (() => {
-          const order: ArcadeStageId[] = ['stage1_streets', 'stage2_subway', 'stage3_westside', 'stage4_industrial', 'stage5_bay'];
+          const order: ArcadeStageId[] = ['stage1_streets', 'stage2_subway', 'stage3_westside', 'stage4_industrial', 'stage5_bay', 'stage6_uptown'];
           const compIdx = Math.max(0, order.indexOf(roundClearInfo.completedStageId));
           const nextStageForMap: ArcadeStageId = roundClearInfo.nextStageId === 'bonus_car'
             ? 'stage2_subway'
             : roundClearInfo.nextStageId === 'bonus_glass'
               ? 'stage4_industrial'
-              : (roundClearInfo.nextStageId || 'stage5_bay');
+              : (roundClearInfo.nextStageId || 'stage6_uptown');
           const nextMapIdx = Math.min(order.length - 1, compIdx + 1);
           const nextLabel = roundClearInfo.nextStageId ? getStageMeta(roundClearInfo.nextStageId).label : 'CAMPANHA CONCLUÍDA!';
 
