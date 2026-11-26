@@ -4319,7 +4319,12 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             transitionBusy = true;
             setGoArrow(false);
             setWaveBanner(hitPortal.banner);
-            const startDelay = hitPortal.autoOnWaveIdx !== undefined ? 650 : 0;
+            if (hitPortal.captureByAndore) {
+              spawnFloat('💪 AGARRADO POR ANDORE Jr.!', '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.2, playerState.z), camera);
+              shakeUntil = now + 550;
+              playerState.hurtUntil = now + 850;
+            }
+            const startDelay = hitPortal.captureByAndore ? 850 : (hitPortal.autoOnWaveIdx !== undefined ? 650 : 0);
             setTimeout(() => {
               if (disposed) return;
               setFadeOpacity(1);

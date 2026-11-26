@@ -29,7 +29,7 @@ export const CAMPAIGN_ORDER: StageOrderItem[] = [
   { id: 'stage1_streets', label: '🌆 Estágio 1: Slum, Galpão, Ferro-Velho & Dande', length: 472, bossHpMultiplier: 7, bossDisplayName: 'Dande' },
   { id: 'stage2_subway', label: '🚇 Estágio 2: Estação, Metrô, Galeria & Ringue (Sodom)', length: 562, bossHpMultiplier: 10, bossDisplayName: 'Sodom' },
   { id: 'bonus_car', label: '🚗 Bônus 1: Posto de Gasolina — Destrua o Carro!', length: 24, bossHpMultiplier: 1, bossDisplayName: 'Carro Sedan', isBonus: true, bonusKind: 'car' },
-  { id: 'stage3_westside', label: '🎪 Estágio 3: Restaurante, Arena dos Andores & Festival (Eddie)', length: 554, bossHpMultiplier: 13, bossDisplayName: 'Eddie' },
+  { id: 'stage3_westside', label: '🌃 Estágio 3: Ponte, Bar, Ringue dos Andores & West Side (Eddie)', length: 432, bossHpMultiplier: 13, bossDisplayName: 'Eddie' },
   { id: 'stage4_industrial', label: '🏭 Estágio 4: Indústria, Elevador & Rolento', length: 300, bossHpMultiplier: 16, bossDisplayName: 'Rolento' },
   { id: 'bonus_glass', label: '🪟 Bônus 2: Quebre as Vidraças!', length: 46, bossHpMultiplier: 1, bossDisplayName: 'Vidraças', isBonus: true, bonusKind: 'glass' },
   { id: 'stage5_bay', label: '⚓ Estágio 5: Bay Area & Chefe Final', length: 360, bossHpMultiplier: 20, bossDisplayName: 'Belger' },
@@ -54,6 +54,7 @@ export interface StagePortalDef {
   destZoneIdx: number;
   destX: number;
   banner: string;
+  captureByAndore?: boolean;
 }
 
 export function getStageMeta(id: ArcadeStageId): StageOrderItem {
@@ -79,8 +80,10 @@ export function getStageZones(stageId: ArcadeStageId): StageZoneDef[] {
   if (stageId === 'stage3_westside') {
     return [
       { minX: 0, maxX: 78, startX: 2.0 },
-      { minX: 200, maxX: 246, startX: 212.0 },
-      { minX: 400, maxX: 554, startX: 403.0, preBossX: 505 },
+      { minX: 100, maxX: 178, startX: 103.0 },
+      { minX: 200, maxX: 244, startX: 214.0 },
+      { minX: 260, maxX: 280, startX: 263.0 },
+      { minX: 300, maxX: 432, startX: 303.0, preBossX: 386 },
     ];
   }
   const len = getStageMeta(stageId).length;
@@ -135,17 +138,32 @@ export function getStagePortals(stageId: ArcadeStageId): StagePortalDef[] {
     return [
       {
         zoneIdx: 0,
-        triggerX: 76.2,
+        triggerX: 75.8,
         destZoneIdx: 1,
-        destX: 212.0,
-        banner: '⛓️ CAPTURADO! LEVADO AO RINGUE DOS ANDORES...',
+        destX: 103.0,
+        banner: '🚪 QUEBRANDO A PORTA! ENTRANDO NO BAR...',
       },
       {
         zoneIdx: 1,
-        triggerX: 243.0,
+        triggerX: 173.5,
         destZoneIdx: 2,
-        destX: 403.0,
-        banner: '🚪 SAINDO DO RESTAURANTE PARA AS RUAS...',
+        destX: 214.0,
+        banner: '⛓️ EMBOSCADA! ANDORE Jr. TE ARRASTOU PARA O RINGUE!',
+        captureByAndore: true,
+      },
+      {
+        zoneIdx: 2,
+        triggerX: 238.0,
+        destZoneIdx: 3,
+        destX: 263.0,
+        banner: '🚪 DE VOLTA AO CORREDOR DO BAR...',
+      },
+      {
+        zoneIdx: 3,
+        triggerX: 276.8,
+        destZoneIdx: 4,
+        destX: 303.0,
+        banner: '🌃 SAINDO PARA A RUA ILUMINADA DE WEST SIDE!',
       },
     ];
   }
@@ -665,7 +683,7 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
   if (stageId === 'stage3_westside') {
     return [
       {
-        triggerX: 12, lockMinX: 3, lockMaxX: 22, label: 'WEST SIDE — CALÇADÃO DE NEON!',
+        triggerX: 16, lockMinX: 6, lockMaxX: 28, label: 'PONTE NOTURNA — RUA DO RESTAURANTE!',
         spawns: [
           { side: 'front', zOffset: -0.8, tier: 'basic', gangIdx: 0 },
           { side: 'front', zOffset: 0.9, tier: 'basic', gangIdx: 4 },
@@ -674,56 +692,57 @@ export function getWavesForStage(stageId: ArcadeStageId): ArcadeWaveDef[] {
         ],
       },
       {
-        triggerX: 39, lockMinX: 30, lockMaxX: 49, label: 'DENTRO DO RESTAURANTE — EMBOSCADA!', isAmbushWave: true,
+        triggerX: 48, lockMinX: 38, lockMaxX: 62, label: 'CALÇADA DO RESTAURANTE — SLASH & ANDORE!',
         spawns: [
-          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 2 },
-          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 1 },
-          { side: 'back', zOffset: -0.4, tier: 'basic', gangIdx: 1 },
-          { side: 'back', zOffset: 1.2, tier: 'basic', gangIdx: 3 },
-        ],
-      },
-      {
-        triggerX: 62, lockMinX: 53, lockMaxX: 73, label: 'SALÃO DOS FUNDOS — ANDORE TE CERCOU!',
-        spawns: [
-          { side: 'front', zOffset: -0.4, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: -0.6, isAndore: true, gangIdx: 0 },
           { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 0 },
-          { side: 'back', zOffset: 0.1, isSubBoss: true, gangIdx: 0 },
+          { side: 'back', zOffset: 0.1, tier: 'basic', gangIdx: 1 },
+          { side: 'back', zOffset: -1.1, tier: 'basic', gangIdx: 3 },
         ],
       },
       {
-        triggerX: 212, lockMinX: 204, lockMaxX: 240, label: '🤼 RINGUE RÚSTICO — ARENA DOS ANDORES!', isAmbushWave: true,
+        triggerX: 118, lockMinX: 106, lockMaxX: 132, label: '🍺 INTERIOR DO BAR — EL GADO & DUG!', isAmbushWave: true,
         spawns: [
-          { side: 'front', zOffset: -0.7, isAndore: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.8, isAndore: true, gangIdx: 1 },
+          { side: 'front', zOffset: -0.9, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'mid', gangIdx: 1 },
+          { side: 'back', zOffset: -0.3, tier: 'basic', gangIdx: 2 },
+          { side: 'back', zOffset: 1.0, tier: 'basic', gangIdx: 0 },
         ],
       },
       {
-        triggerX: 416, lockMinX: 407, lockMaxX: 427, label: 'SAÍDA DO RESTAURANTE — RUAS DE WEST SIDE!',
+        triggerX: 148, lockMinX: 136, lockMaxX: 162, label: '🍺 BALCÃO DO BAR — ANDORE Jr. & WONG WHO!',
         spawns: [
-          { side: 'front', zOffset: -1.0, tier: 'basic', gangIdx: 4 },
-          { side: 'front', zOffset: 0.7, tier: 'mid', gangIdx: 2 },
-          { side: 'back', zOffset: -0.2, tier: 'mid', gangIdx: 1 },
-          { side: 'back', zOffset: 1.1, tier: 'basic', gangIdx: 2 },
+          { side: 'front', zOffset: -0.5, isAndore: true, gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: 0.1, tier: 'mid', gangIdx: 1 },
         ],
       },
       {
-        triggerX: 448, lockMinX: 439, lockMaxX: 459, label: '🔥 BECO DE NEON — BANDO DE FOGO!',
+        triggerX: 214, lockMinX: 204, lockMaxX: 238, label: '🤼 JAULA DE LUTA — G. ANDORE & F. ANDORE!', isAmbushWave: true,
+        spawns: [
+          { side: 'front', zOffset: -0.8, isAndore: true, gangIdx: 0 },
+          { side: 'back', zOffset: 0.8, isAndore: true, gangIdx: 1 },
+        ],
+      },
+      {
+        triggerX: 314, lockMinX: 304, lockMaxX: 328, label: '🌃 WEST SIDE — EL GADO & CARROS ESTACIONADOS!',
+        spawns: [
+          { side: 'front', zOffset: -0.9, tier: 'mid', gangIdx: 2 },
+          { side: 'front', zOffset: 0.8, tier: 'heavy', gangIdx: 0 },
+          { side: 'back', zOffset: 0.0, tier: 'mid', gangIdx: 1 },
+        ],
+      },
+      {
+        triggerX: 352, lockMinX: 342, lockMaxX: 368, label: '🔥 RUA DE NEON — BANDO DE FOGO & TWO.P!',
         spawns: [
           { side: 'front', zOffset: -1.0, isFireSquad: true, gangIdx: 0 },
-          { side: 'front', zOffset: 0.9, isFireSquad: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.0, tier: 'heavy', gangIdx: 0 },
+          { side: 'front', zOffset: 0.9, tier: 'mid', gangIdx: 0 },
+          { side: 'back', zOffset: -0.2, isSubBoss: true, gangIdx: 0 },
+          { side: 'back', zOffset: 1.0, tier: 'basic', gangIdx: 2 },
         ],
       },
       {
-        triggerX: 484, lockMinX: 475, lockMaxX: 495, label: 'FESTIVAL CHINATOWN — ACROBATAS & ANDORE!',
-        spawns: [
-          { side: 'front', zOffset: -1.0, tier: 'mid', gangIdx: 0 },
-          { side: 'front', zOffset: 0.8, isAndore: true, gangIdx: 0 },
-          { side: 'back', zOffset: 0.0, isSubBoss: true, gangIdx: 1 },
-        ],
-      },
-      {
-        triggerX: 530, lockMinX: 520, lockMaxX: 548, label: '⚠️ FESTIVAL — CHEFE EDDIE!', isBossWave: true,
+        triggerX: 406, lockMinX: 396, lockMaxX: 428, label: '🚨 LUZES DA CIDADE — CHEFE EDI.E!', isBossWave: true,
         spawns: [
           { side: 'front', zOffset: -1.2, tier: 'basic', gangIdx: 0 },
           { side: 'back', zOffset: 1.2, tier: 'mid', gangIdx: 1 },
@@ -1999,138 +2018,230 @@ export function buildArcadeScenario(scene: THREE.Scene, stageId: ArcadeStageId):
   }
 
   if (stageId === 'stage3_westside') {
-    scene.background = new THREE.Color(0x160f29);
-    scene.fog = new THREE.FogExp2(0x160f29, 0.0085);
+    scene.background = new THREE.Color(0x0b081a);
+    scene.fog = new THREE.FogExp2(0x0b081a, 0.0068);
 
-    // 3 CENAS ISOLADAS COM TRANSIÇÕES DE FADE OUT / FADE IN:
-    // CENA 3A (x=0..78): Calçadão West Side -> Interior do Restaurante (captura no final!)
-    // CENA 3B (x=200..246): Ringue Rústico de Luta Livre dos Andores!
-    // CENA 3C (x=400..554): Saída do Restaurante -> Ruas de West Side -> Festival Chinatown (Eddie)
-
-    // ---- CENA 3A: CALÇADÃO & RESTAURANTE (x=-6..86) ----
-    const rStreet = new THREE.Mesh(new THREE.PlaneGeometry(38, 7.6), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture() }));
-    rStreet.rotation.x = -Math.PI / 2; rStreet.position.set(13, 0, 0.5); scene.add(rStreet);
-    const rRest = new THREE.Mesh(new THREE.PlaneGeometry(58, 7.6), new THREE.MeshStandardMaterial({ map: makeCheckerFloorTexture() }));
-    rRest.rotation.x = -Math.PI / 2; rRest.position.set(57, 0, 0.5); scene.add(rRest);
-    const front3A = new THREE.Mesh(new THREE.PlaneGeometry(96, 6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
-    front3A.rotation.x = -Math.PI / 2; front3A.position.set(38, 0.01, 7.0); scene.add(front3A);
-
-    for (let x = -2; x <= 80; x += 6.2) {
-      const isRest = x >= 30;
-      const bldg = new THREE.Mesh(
-        new THREE.BoxGeometry(5.8, 7.0, 3.6),
-        new THREE.MeshStandardMaterial({ color: isRest ? 0x7f1d1d : 0x334155 })
+    // Helper local: latão de lixo roxo/prateado (DUSTBIN) quebrável estilo Final Fight
+    const addDustbinProp = (x: number, z: number, colorHex: number, guaranteedDrop?: BreakablePropDef['guaranteedDrop'], isPreBoss?: boolean) => {
+      const grp = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.40, 0.36, 1.02, 12),
+        new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.55, metalness: 0.35 })
       );
-      bldg.position.set(x, 3.2, -8.0); scene.add(bldg);
-      const neon = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.1, 0.65),
-        new THREE.MeshBasicMaterial({ map: makeNeonSignTexture(isRest ? 'RESTAURANTE' : 'WEST SIDE', '#f43f5e', '#fff') })
+      body.position.y = 0.51; grp.add(body);
+      const lid = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.43, 0.43, 0.11, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.5 })
       );
-      neon.position.set(x, 3.2, -6.15); scene.add(neon);
-      if (isRest) {
-        // Mesas/balcões vermelhos ao fundo do restaurante
-        const booth = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.75, 1.1), new THREE.MeshStandardMaterial({ color: 0xb91c1c }));
-        booth.position.set(x, 0.38, -2.9); scene.add(booth);
+      lid.position.y = 1.05; grp.add(lid);
+      grp.position.set(x, 0, z);
+      scene.add(grp);
+      refs.breakableProps.push({ id: propSeq++, kind: 'barrel', x, z, y: 0, mesh: grp, hp: 30, solidTop: 1.05, guaranteedDrop, isPreBoss });
+    };
+
+    // Helper local: porta quebrável / entrada (DOOR)
+    const addBreakableDoorProp = (x: number, z: number, colorHex: number, signLabel?: string) => {
+      const grp = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.3, 2.2), new THREE.MeshStandardMaterial({ color: 0x3f2e26 }));
+      frame.position.set(0, 1.65, 0); grp.add(frame);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.0, 1.85), new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.7 }));
+      panel.position.set(0, 1.5, 0); grp.add(panel);
+      if (signLabel) {
+        const sign = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.9, 0.55),
+          new THREE.MeshBasicMaterial({ map: makeNeonSignTexture(signLabel, '#ef4444', '#fef08a') })
+        );
+        sign.rotation.y = -Math.PI / 2;
+        sign.position.set(-0.22, 3.35, 0); grp.add(sign);
       }
+      grp.position.set(x, 0, z);
+      scene.add(grp);
+      refs.breakableProps.push({ id: propSeq++, kind: 'crate', x, z, y: 0, mesh: grp, hp: 35, solidTop: 0 });
+    };
+
+    // Helper local: carro verde estacionado ao fundo da West Side Street
+    const addParkedGreenCar = (x: number, z: number) => {
+      const car = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.85, 1.75), new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.45, metalness: 0.35 }));
+      body.position.y = 0.62; car.add(body);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.68, 1.55), new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.4 }));
+      cabin.position.set(-0.1, 1.32, 0); car.add(cabin);
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.45, 1.42), new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.65 }));
+      glass.position.set(-0.1, 1.34, 0); car.add(glass);
+      [-1.15, 1.15].forEach(wx => {
+        [-0.88, 0.88].forEach(wz => {
+          const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.2, 12), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+          wh.rotation.x = Math.PI / 2; wh.position.set(wx, 0.32, wz); car.add(wh);
+        });
+      });
+      car.position.set(x, 0, z);
+      scene.add(car);
+    };
+
+    // ---- ZONA 0: PONTE NOTURNA + RUA DO RESTAURANTE + PORTA DO BAR (x=-6..80) ----
+    const bridgeFloor = new THREE.Mesh(new THREE.PlaneGeometry(18, 7.8), new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.9 }));
+    bridgeFloor.rotation.x = -Math.PI / 2; bridgeFloor.position.set(3, 0, 0.5); scene.add(bridgeFloor);
+    const streetFloor0 = new THREE.Mesh(new THREE.PlaneGeometry(68, 7.8), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), color: 0x4c1d95 }));
+    streetFloor0.rotation.x = -Math.PI / 2; streetFloor0.position.set(46, 0, 0.5); scene.add(streetFloor0);
+    const front0 = new THREE.Mesh(new THREE.PlaneGeometry(88, 6), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
+    front0.rotation.x = -Math.PI / 2; front0.position.set(38, 0.01, 7.0); scene.add(front0);
+
+    // Céu noturno com prédios e Lua Cheia amarela atrás da ponte
+    addCitySkylineStrip(-8, 16, -9.5);
+    const moon0 = new THREE.Mesh(new THREE.CircleGeometry(2.1, 24), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+    moon0.position.set(9.5, 6.2, -13.0); scene.add(moon0);
+
+    // Grade metálica da ponte + placa verde ONE WAY
+    for (let rx = -4; rx <= 11.5; rx += 1.6) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 0.12), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
+      post.position.set(rx, 0.68, -3.5); scene.add(post);
     }
-    addFireBarrel(16, 0, -1.9);
-    addTrafficCone(24, 0, 1.55);
-    addSteamVent(10, 0, -2.6);
-
-    // ---- CENA 3B: RINGUE RÚSTICO DOS ANDORES (x=200..246, isolado!) ----
-    const rusticOuter = new THREE.Mesh(new THREE.PlaneGeometry(58, 8.2), new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 }));
-    rusticOuter.rotation.x = -Math.PI / 2; rusticOuter.position.set(223, 0, 0.4); scene.add(rusticOuter);
-    // Tatame / tablado de madeira desgastada estilo luta livre clandestina
-    const rusticMat = new THREE.Mesh(
-      new THREE.PlaneGeometry(38, 5.8),
-      new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 })
+    const railTop = new THREE.Mesh(new THREE.BoxGeometry(16, 0.1, 0.12), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.6 }));
+    railTop.position.set(3.5, 1.32, -3.5); scene.add(railTop);
+    const oneWayPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 8), new THREE.MeshStandardMaterial({ color: 0x16a34a }));
+    oneWayPole.position.set(11.6, 2.1, -3.2); scene.add(oneWayPole);
+    const oneWaySign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.75, 0.62),
+      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('ONE WAY ->', '#15803d', '#ffffff') })
     );
-    rusticMat.rotation.x = -Math.PI / 2; rusticMat.position.set(222, 0.02, 0.2); scene.add(rusticMat);
-    const rusticFront = new THREE.Mesh(new THREE.PlaneGeometry(62, 6), new THREE.MeshStandardMaterial({ color: 0x09090b }));
-    rusticFront.rotation.x = -Math.PI / 2; rusticFront.position.set(223, 0.01, 7.0); scene.add(rusticFront);
+    oneWaySign.position.set(11.6, 3.85, -3.1); scene.add(oneWaySign);
 
-    // Cordas grossas rústicas (vermelho/âmbar) + postes metálicos enferrujados!
-    [
-      { y: 0.85, col: 0xb91c1c },
-      { y: 1.38, col: 0xd97706 },
-      { y: 1.9, col: 0xb91c1c },
-    ].forEach(({ y, col }) => {
-      const ropeBack = new THREE.Mesh(new THREE.BoxGeometry(38, 0.09, 0.09), new THREE.MeshBasicMaterial({ color: col }));
-      ropeBack.position.set(222, y, -2.65); scene.add(ropeBack);
-      const ropeLeft = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 5.8), new THREE.MeshBasicMaterial({ color: col }));
-      ropeLeft.position.set(203, y, 0.2); scene.add(ropeLeft);
-      const ropeRight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 5.8), new THREE.MeshBasicMaterial({ color: col }));
-      ropeRight.position.set(241, y, 0.2); scene.add(ropeRight);
-    });
-    [[203, -2.65], [241, -2.65], [203, 3.05], [241, 3.05]].forEach(([px, pz]) => {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 2.35, 10), new THREE.MeshStandardMaterial({ color: 0x78716c, metalness: 0.6 }));
-      post.position.set(px, 1.18, pz); scene.add(post);
-    });
-    // Grade rústica + placas e latões acesos iluminando a jaula clandestina
-    const cageBack = new THREE.Mesh(
-      new THREE.PlaneGeometry(46, 5.4, 18, 5),
-      new THREE.MeshBasicMaterial({ color: 0x57534e, wireframe: true })
+    // 2 lixeiras roxas (DUSTBIN) na ponte!
+    addDustbinProp(5.4, 2.1, 0x6d28d9, 'pipe');
+    addDustbinProp(7.4, 2.1, 0x6d28d9, 'coin');
+
+    // Parede de tijolos vermelhos + painéis dourados RESTAURANT
+    const brickWall0 = new THREE.Mesh(new THREE.BoxGeometry(68, 6.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.88 }));
+    brickWall0.position.set(46, 3.4, -4.6); scene.add(brickWall0);
+    for (let x = 16; x <= 70; x += 9.0) {
+      const winFrame = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 3.0), new THREE.MeshBasicMaterial({ color: 0xb45309 }));
+      winFrame.position.set(x, 2.2, -3.96); scene.add(winFrame);
+      const restSign = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.8, 0.72),
+        new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('RESTAURANT', '#d97706', '#fef08a') })
+      );
+      restSign.position.set(x, 3.2, -3.93); scene.add(restSign);
+    }
+    // Entrada do BAR com toldo listrado colorido + letreiro BAR + porta quebrável (DOOR)
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.75, 1.4), new THREE.MeshBasicMaterial({ color: 0xec4899 }));
+    awning.position.set(76.2, 3.6, -3.3); scene.add(awning);
+    const barNeon = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 1.8),
+      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('BAR', '#0f172a', '#38bdf8') })
     );
-    cageBack.position.set(222, 2.7, -4.6); scene.add(cageBack);
+    barNeon.position.set(74.8, 2.4, -3.7); scene.add(barNeon);
+    addBreakableDoorProp(76.6, 0.2, 0x581c87, 'BAR');
+
+    // ---- ZONA 1: INTERIOR DO BAR (x=100..178) ----
+    const barFloor = new THREE.Mesh(new THREE.PlaneGeometry(84, 7.8), new THREE.MeshStandardMaterial({ color: 0x6b3a1e, roughness: 0.85 }));
+    barFloor.rotation.x = -Math.PI / 2; barFloor.position.set(139, 0, 0.5); scene.add(barFloor);
+    const barWall = new THREE.Mesh(new THREE.BoxGeometry(84, 6.8, 1.0), new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.9 }));
+    barWall.position.set(139, 3.4, -4.6); scene.add(barWall);
+    // Balcão verde longo do bar + prateleira iluminada de garrafas
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(38, 1.15, 1.3), new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.5 }));
+    counter.position.set(134, 0.58, -2.5); scene.add(counter);
+    const bottleShelf = new THREE.Mesh(new THREE.BoxGeometry(36, 2.4, 0.35), new THREE.MeshBasicMaterial({ color: 0x14532d }));
+    bottleShelf.position.set(134, 2.6, -4.0); scene.add(bottleShelf);
+    for (let bx = 117; bx <= 151; bx += 2.2) {
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.55, 8), new THREE.MeshBasicMaterial({ color: bx % 4 === 0 ? 0x4ade80 : 0xfacc15 }));
+      bottle.position.set(bx, 2.5, -3.75); scene.add(bottle);
+    }
+    // 2 barris de madeira na entrada do bar + 1 lixeira prateada à direita!
+    addWoodBarrelProp(112.0, 1.6, 1.0, 'meat');
+    addWoodBarrelProp(114.2, 0.2, 1.0, 'coin');
+    addDustbinProp(147.0, 2.1, 0x94a3b8, 'coin');
+    // Corredor de saída do bar com vasos de plantas verdes e porta dupla roxa
+    [160, 165, 170].forEach((px) => {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.26, 0.55, 8), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+      pot.position.set(px, 0.28, -3.5); scene.add(pot);
+      const plant = new THREE.Mesh(new THREE.ConeGeometry(0.48, 1.1, 6), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+      plant.position.set(px, 0.98, -3.5); scene.add(plant);
+    });
+    const doubleDoor1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.1, 2.1), new THREE.MeshStandardMaterial({ color: 0x6b21a8 }));
+    doubleDoor1.position.set(176.2, 1.55, 0.0); scene.add(doubleDoor1);
+
+    // ---- ZONA 2: JAULA DE LUTA LIVRE DOS ANDORES (x=200..244) ----
+    const ringOuter = new THREE.Mesh(new THREE.PlaneGeometry(54, 8.2), new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 }));
+    ringOuter.rotation.x = -Math.PI / 2; ringOuter.position.set(222, 0, 0.4); scene.add(ringOuter);
+    const ringMat = new THREE.Mesh(new THREE.PlaneGeometry(38, 6.2), new THREE.MeshStandardMaterial({ color: 0xd6d3d1, roughness: 0.85 }));
+    ringMat.rotation.x = -Math.PI / 2; ringMat.position.set(222, 0.03, 0.2); scene.add(ringMat);
+    addCitySkylineStrip(200, 244, -9.5);
+    const moonRing = new THREE.Mesh(new THREE.CircleGeometry(2.0, 24), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+    moonRing.position.set(229, 6.0, -13.0); scene.add(moonRing);
+    const cageFence = new THREE.Mesh(new THREE.PlaneGeometry(42, 4.2, 22, 6), new THREE.MeshBasicMaterial({ color: 0xa8a29e, wireframe: true }));
+    cageFence.position.set(222, 2.1, -3.6); scene.add(cageFence);
+    [[203, -2.8], [241, -2.8], [203, 3.2], [241, 3.2]].forEach(([px, pz]) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 2.4, 10), new THREE.MeshStandardMaterial({ color: 0x78716c, metalness: 0.6 }));
+      post.position.set(px, 1.2, pz); scene.add(post);
+    });
     const andoreSign = new THREE.Mesh(
-      new THREE.PlaneGeometry(6.4, 1.0),
-      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('ARENA LUTA LIVRE — ANDORES', '#ef4444', '#fde047') })
+      new THREE.PlaneGeometry(6.6, 1.0),
+      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('G. ANDORE & F. ANDORE', '#ef4444', '#fde047') })
     );
-    andoreSign.position.set(222, 4.4, -4.5); scene.add(andoreSign);
-    addFireBarrel(205, 0, -2.2);
-    addFireBarrel(239, 0, -2.2);
+    andoreSign.position.set(222, 4.5, -4.4); scene.add(andoreSign);
 
-    // ---- CENA 3C: SAÍDA DO RESTAURANTE -> RUAS -> FESTIVAL CHINATOWN (x=400..554) ----
-    const rExitStreet = new THREE.Mesh(new THREE.PlaneGeometry(82, 7.6), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture() }));
-    rExitStreet.rotation.x = -Math.PI / 2; rExitStreet.position.set(438, 0, 0.5); scene.add(rExitStreet);
-    const rFest = new THREE.Mesh(new THREE.PlaneGeometry(92, 7.6), new THREE.MeshStandardMaterial({ map: makeSidewalkTexture(), color: 0xc084fc }));
-    rFest.rotation.x = -Math.PI / 2; rFest.position.set(524, 0, 0.5); scene.add(rFest);
-    const front3C = new THREE.Mesh(new THREE.PlaneGeometry(176, 6), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
-    front3C.rotation.x = -Math.PI / 2; front3C.position.set(482, 0.01, 7.0); scene.add(front3C);
+    // ---- ZONA 3: CORREDOR DE SAÍDA DO BAR (x=260..280) ----
+    const hallFloor = new THREE.Mesh(new THREE.PlaneGeometry(24, 7.8), new THREE.MeshStandardMaterial({ color: 0x6b3a1e, roughness: 0.85 }));
+    hallFloor.rotation.x = -Math.PI / 2; hallFloor.position.set(270, 0, 0.5); scene.add(hallFloor);
+    const hallWall = new THREE.Mesh(new THREE.BoxGeometry(24, 6.8, 1.0), new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.9 }));
+    hallWall.position.set(270, 3.4, -4.6); scene.add(hallWall);
+    [264, 269, 274].forEach((px) => {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.26, 0.55, 8), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+      pot.position.set(px, 0.28, -3.5); scene.add(pot);
+      const plant = new THREE.Mesh(new THREE.ConeGeometry(0.48, 1.1, 6), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+      plant.position.set(px, 0.98, -3.5); scene.add(plant);
+    });
+    addBreakableDoorProp(277.6, 0.2, 0x6b21a8, 'SAÍDA');
 
-    const restExitSign = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.8, 0.72),
-      new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('SAÍDA RESTAURANTE ➔', '#22d3ee', '#fef08a') })
-    );
-    restExitSign.position.set(403, 3.3, -4.2); scene.add(restExitSign);
+    // ---- ZONA 4: WEST SIDE NEON STREET, CARROS VERDES & CHEFE EDI.E (x=300..432) ----
+    const street4Floor = new THREE.Mesh(new THREE.PlaneGeometry(140, 7.8), new THREE.MeshStandardMaterial({ map: makeAsphaltTexture(), color: 0x581c87 }));
+    street4Floor.rotation.x = -Math.PI / 2; street4Floor.position.set(368, 0, 0.5); scene.add(street4Floor);
+    const front4 = new THREE.Mesh(new THREE.PlaneGeometry(144, 6), new THREE.MeshStandardMaterial({ color: 0x090d16 }));
+    front4.rotation.x = -Math.PI / 2; front4.position.set(368, 0.01, 7.0); scene.add(front4);
 
-    const lanterns: THREE.Mesh[] = [];
-    for (let x = 400, idx = 0; x <= 564; x += 6.2, idx++) {
-      const isFest = x >= 478;
-      const bldg = new THREE.Mesh(
-        new THREE.BoxGeometry(5.8, isFest ? 5.2 : 7.0, 3.6),
-        new THREE.MeshStandardMaterial({ color: isFest ? 0x6d28d9 : 0x334155 })
-      );
-      bldg.position.set(x, 3.2, -8.0); scene.add(bldg);
-      const neon = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.1, 0.65),
-        new THREE.MeshBasicMaterial({ map: makeNeonSignTexture(isFest ? 'FESTIVAL!' : 'WEST SIDE', isFest ? '#facc15' : '#f43f5e', '#fff') })
-      );
-      neon.position.set(x, 3.2, -6.15); scene.add(neon);
-
-      if (isFest) {
-        const lan = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), new THREE.MeshBasicMaterial({ color: idx % 2 === 0 ? 0xfacc15 : 0xf43f5e }));
-        lan.position.set(x, 4.2, -3.5); scene.add(lan);
-        lanterns.push(lan);
-      }
+    // Parede de tijolos + luzes de festa + carros verdes estacionados
+    const brickWall4 = new THREE.Mesh(new THREE.BoxGeometry(96, 6.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.88 }));
+    brickWall4.position.set(348, 3.4, -4.8); scene.add(brickWall4);
+    const stringLights: THREE.Mesh[] = [];
+    for (let lx = 304; lx <= 394; lx += 3.0) {
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+      bulb.position.set(lx, 4.6, -3.9); scene.add(bulb);
+      stringLights.push(bulb);
     }
-    [418, 456, 496].forEach(vx => addSteamVent(vx, 0, -2.7));
-    [412, 444, 488, 526].forEach((bx, bi) => addFireBarrel(bx, 0, bi % 2 === 0 ? -1.9 : 1.7));
-    [428, 466, 510].forEach(cx => addTrafficCone(cx, 0, -1.65));
-    // Barris extras de cura antes da emboscada dos Andores e antes do Chefe Eddie!
-    addWoodBarrelProp(55.5, 0.9, 1.0, 'meat', true);
-    addWoodBarrelProp(472.5, -0.9, 1.0, 'potion', true);
-    addWoodBarrelProp(516.0, 0.85, 1.0, 'meat', true);
+    [312, 322, 332, 344, 356, 368, 380].forEach(cx => addParkedGreenCar(cx, -2.95));
 
-    // Varanda/sacada elevada do Festival Chinatown fora do alcance do jogador onde Eddie sai do campo para convocar reforços!
-    const eddieBalcony = new THREE.Mesh(new THREE.BoxGeometry(6.8, 1.35, 2.2), new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.75 }));
-    eddieBalcony.position.set(545.5, 0.68, -3.95); scene.add(eddieBalcony);
-    const eddieRail = new THREE.Mesh(new THREE.BoxGeometry(6.9, 0.25, 0.18), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.4 }));
-    eddieRail.position.set(545.5, 1.48, -2.92); scene.add(eddieRail);
-    refs.bossSeatPos = { x: 545.5, y: 1.38, z: -3.75 };
+    // Placas Surf/Billboard quebráveis + lixeiras roxas (DUSTBIN) antes do chefe
+    const addBillboardProp = (bx: number, bz: number, dropKind?: BreakablePropDef['guaranteedDrop']) => {
+      const grp = new THREE.Group();
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.9, 1.35), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+      board.position.y = 1.0; grp.add(board);
+      const art = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.5), new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('SURF', '#f97316', '#fef08a') }));
+      art.rotation.y = -Math.PI / 2; art.position.set(-0.2, 1.0, 0); grp.add(art);
+      grp.position.set(bx, 0, bz);
+      scene.add(grp);
+      refs.breakableProps.push({ id: propSeq++, kind: 'crate', x: bx, z: bz, y: 0, mesh: grp, hp: 28, solidTop: 0, guaranteedDrop: dropKind });
+    };
+    addBillboardProp(309.5, 1.4, 'knife');
+    addBillboardProp(348.5, -0.8, 'coin');
+    addDustbinProp(358.0, 2.1, 0x6d28d9, 'meat');
+    addDustbinProp(393.5, 2.1, 0x6d28d9, 'potion', true);
+
+    // Arena do Chefe Edi.E: prédios de neon + Lua Cheia + torcida ao fundo!
+    addCitySkylineStrip(396, 434, -9.5);
+    const moonBoss = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+    moonBoss.position.set(421, 6.2, -13.0); scene.add(moonBoss);
+    for (let nx = 398; nx <= 430; nx += 7.5) {
+      const bldg = new THREE.Mesh(new THREE.BoxGeometry(6.2, 6.8, 3.0), new THREE.MeshStandardMaterial({ color: 0x312e81 }));
+      bldg.position.set(nx, 3.4, -7.2); scene.add(bldg);
+      const neon = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 0.72),
+        new THREE.MeshBasicMaterial({ map: makeNeonSignTexture('WEST SIDE CLUB', '#f43f5e', '#fde047') })
+      );
+      neon.position.set(nx, 3.6, -5.6); scene.add(neon);
+    }
 
     animCallbacks.push((t) => {
-      lanterns.forEach((l, i) => { l.position.y = 4.2 + Math.sin(t * 4 + i) * 0.18; });
+      stringLights.forEach((b, i) => { b.visible = Math.sin(t * 5 + i * 0.7) > -0.35; });
     });
     return refs;
   }
