@@ -117,15 +117,14 @@ export function getStagePortals(stageId: ArcadeStageId): StagePortalDef[] {
       },
       {
         zoneIdx: 1,
-        triggerX: 9999,
-        autoOnWaveIdx: 7,
+        triggerX: 300.8,
         destZoneIdx: 2,
         destX: 383.5,
         banner: '🛤️ TREM PAROU! SAINDO PELA GALERIA SUBTERRÂNEA...',
       },
       {
         zoneIdx: 2,
-        triggerX: 447.5,
+        triggerX: 449.5,
         destZoneIdx: 3,
         destX: 521.2,
         banner: '🥊 ENTRANDO NA ARENA SUBTERRÂNEA DO SODOM...',
@@ -136,16 +135,14 @@ export function getStagePortals(stageId: ArcadeStageId): StagePortalDef[] {
     return [
       {
         zoneIdx: 0,
-        triggerX: 9999,
-        autoOnWaveIdx: 2,
+        triggerX: 76.2,
         destZoneIdx: 1,
         destX: 212.0,
         banner: '⛓️ CAPTURADO! LEVADO AO RINGUE DOS ANDORES...',
       },
       {
         zoneIdx: 1,
-        triggerX: 9999,
-        autoOnWaveIdx: 3,
+        triggerX: 243.0,
         destZoneIdx: 2,
         destX: 403.0,
         banner: '🚪 SAINDO DO RESTAURANTE PARA AS RUAS...',
@@ -203,6 +200,7 @@ export interface GangEnemyTemplate {
   attacksConfig?: any;
   scale: number;
   speed: number;
+  attackSpeed: number;
   attack: number;
   defense: number;
   hp: number;
@@ -315,13 +313,18 @@ export function buildFixedStageGang(
 ): { regularRoster: GangEnemyTemplate[]; subBossRoster: GangEnemyTemplate[] } {
   const stageNum = getCampaignStageNumber(stageId);
   const rand = mulberry32(stageNum * 977 + 1337);
-  const diffScale = 1 + (stageNum - 1) * 0.25;
+  // Progressão multiplicativa x1.2 a cada estágio para todos os atributos dos inimigos recorrentes!
+  const stageScale = Math.pow(1.2, stageNum - 1);
+  const speedStageScale = Math.pow(1.07, stageNum - 1);
 
   const humans: GangEnemyTemplate[] = GANG_ARCHETYPES
     .filter(arch => stageNum >= arch.minStage)
     .map((arch, idx) => {
       const hpVar = 0.94 + rand() * 0.12;
       const sizeBoost = arch.scale >= 1.25 ? 1.15 : arch.scale <= 0.9 ? 0.94 : 1.0;
+      const baseAtkSpd = arch.role === 'agile' ? 1.05 : arch.role === 'giant' ? 0.72 : 0.88;
+      const baseEva = arch.role === 'agile' ? 10 : arch.moveProfile === 'slash' ? 5 : 2;
+      const baseCrit = arch.role === 'brawler' || arch.role === 'giant' ? 10 : 4;
       return {
         id: `${stageId}_gang_${idx}`,
         name: stageNum >= 4 && arch.role === 'giant' ? `${arch.name} Mk.${stageNum - 2}` : arch.name,
@@ -331,13 +334,13 @@ export function buildFixedStageGang(
         isMonster: false,
         widthScale: arch.widthScale,
         scale: arch.scale,
-        // Velocidade variada por arquétipo (rápida nos ninjas/acrobatas, média nos punks, cadenciada nos gigantes)
-        speed: Number((1.86 * arch.speedMul + (stageNum - 1) * 0.06).toFixed(2)),
-        attack: Math.round(28 * arch.atkMul * diffScale * sizeBoost),
-        defense: Math.round((arch.defBonus + stageNum * 3) * sizeBoost),
-        hp: Math.round(185 * arch.hpMul * diffScale * hpVar),
-        evasion: arch.role === 'agile' ? 10 : 0,
-        critChance: arch.role === 'brawler' || arch.role === 'giant' ? 12 : 6,
+        speed: Number((1.88 * arch.speedMul * speedStageScale).toFixed(2)),
+        attackSpeed: Number((baseAtkSpd * speedStageScale).toFixed(2)),
+        attack: Math.round(28 * arch.atkMul * stageScale * sizeBoost),
+        defense: Math.round((10 + arch.defBonus) * stageScale * sizeBoost),
+        hp: Math.round(185 * arch.hpMul * stageScale * hpVar),
+        evasion: Math.min(45, Math.round(baseEva * stageScale)),
+        critChance: Math.min(45, Math.round(baseCrit * stageScale)),
         hasSpecial: arch.moveProfile !== 'punk',
         damageEffect: arch.moveProfile === 'ninja_fire' ? 'burn' : 'none',
         avatarConfig: {
@@ -366,9 +369,13 @@ export function buildFixedStageGang(
   const glbPresets = sortedPresets.filter(m => !!m.skinUrl);
 
   glbPresets.forEach((m, i) => {
-    const baseHp = Math.max(95, Number(m.hp) || 120);
-    const baseAtk = Math.max(18, Number(m.attack) || 26);
-    const baseDef = Math.max(6, Number(m.defense) || 10);
+    const baseHp = Math.max(120, Number(m.hp) || 180);
+    const baseAtk = Math.max(22, Number(m.attack) || 28);
+    const baseDef = Math.max(10, Number(m.defense) || 14);
+    const baseSpd = Math.max(0.6, Number(m.speed) || 1.0);
+    const baseAtkSpd = Math.max(0.4, Number(m.attackSpeed) || 0.85);
+    const baseEva = Math.max(2, Number(m.evasion) || 5);
+    const baseCrit = Math.max(4, Number(m.critChance) || 10);
     const prof = subProfiles[(i + stageNum) % subProfiles.length];
     subBossRoster.push({
       id: `subboss_${stageId}_${m.id}_${i}`,
@@ -382,12 +389,13 @@ export function buildFixedStageGang(
       avatarConfig: m.avatarConfig || {},
       drops: m.drops || [],
       scale: Number(Math.max(1.22, Math.min(1.4, (m.scale || 1.0) * 1.25)).toFixed(2)),
-      speed: Number((1.58 + (i % 2) * 0.12).toFixed(2)),
-      attack: Math.round(baseAtk * (1.2 + (stageNum - 1) * 0.16)),
-      defense: Math.round((baseDef + 12 + stageNum * 4) * 1.15),
-      hp: Math.round(Math.max(400, baseHp * 3.0) * diffScale),
-      evasion: Math.max(5, Number(m.evasion) || 4),
-      critChance: Math.max(10, Number(m.critChance) || 12),
+      speed: Number((1.72 * baseSpd * speedStageScale).toFixed(2)),
+      attackSpeed: Number((baseAtkSpd * speedStageScale).toFixed(2)),
+      attack: Math.round(baseAtk * 1.25 * stageScale),
+      defense: Math.round((baseDef + 10) * stageScale),
+      hp: Math.round(Math.max(380, baseHp * 2.2) * stageScale),
+      evasion: Math.min(45, Math.round(baseEva * stageScale)),
+      critChance: Math.min(45, Math.round(baseCrit * stageScale)),
       damageEffect: m.damageEffect || 'none',
       hasSpecial: true,
     });
@@ -400,9 +408,11 @@ export function buildFixedStageGang(
       : Math.min(5, 1 + Math.floor((i / nonGlbPresets.length) * 4));
     if (stageNum < unlockStage) return;
 
-    const baseHp = Math.max(95, Number(m.hp) || 120);
-    const baseAtk = Math.max(18, Number(m.attack) || 26);
-    const baseDef = Math.max(6, Number(m.defense) || 10);
+    const baseHp = Math.max(110, Number(m.hp) || 160);
+    const baseAtk = Math.max(20, Number(m.attack) || 26);
+    const baseDef = Math.max(8, Number(m.defense) || 12);
+    const baseSpd = Math.max(0.6, Number(m.speed) || 1.0);
+    const baseAtkSpd = Math.max(0.4, Number(m.attackSpeed) || 0.85);
     const isHeavy = unlockStage >= 3 || (i % 2 === 1 && stageNum >= 2);
     blockMonsters.push({
       id: `sys_block_mon_${stageId}_${m.id}_${i}`,
@@ -414,13 +424,13 @@ export function buildFixedStageGang(
       avatarConfig: m.avatarConfig || {},
       drops: m.drops || [],
       scale: Number(Math.max(0.84, Math.min(1.22, m.scale || (isHeavy ? 1.14 : 0.92))).toFixed(2)),
-      speed: isHeavy ? 1.46 : 1.65,
-      // Respeita diretamente o ataque configurado do monstro
-      attack: Math.round(baseAtk * (1 + (stageNum - 1) * 0.12)),
-      defense: Math.round(baseDef + stageNum * 3),
-      hp: Math.round(Math.max(175, baseHp * 1.7) * diffScale),
-      evasion: Number(m.evasion) || (isHeavy ? 2 : 8),
-      critChance: Number(m.critChance) || 7,
+      speed: Number(((isHeavy ? 1.68 : 1.85) * baseSpd * speedStageScale).toFixed(2)),
+      attackSpeed: Number((baseAtkSpd * speedStageScale).toFixed(2)),
+      attack: Math.round(baseAtk * stageScale),
+      defense: Math.round(baseDef * stageScale),
+      hp: Math.round(baseHp * stageScale),
+      evasion: Math.min(45, Math.round((Number(m.evasion) || (isHeavy ? 3 : 7)) * stageScale)),
+      critChance: Math.min(45, Math.round((Number(m.critChance) || 6) * stageScale)),
       damageEffect: m.damageEffect || 'none',
       hasSpecial: isHeavy,
     });
@@ -430,6 +440,7 @@ export function buildFixedStageGang(
     .filter(cm => stageNum >= cm.minStage)
     .forEach((cm, ci) => {
       const sizeBoost = cm.scale >= 1.25 ? 1.15 : cm.scale <= 0.85 ? 0.92 : 1.0;
+      const baseAtkSpd = cm.role === 'agile' ? 1.0 : cm.role === 'giant' ? 0.72 : 0.85;
       blockMonsters.push({
         id: `cube_arch_${stageId}_${ci}`,
         name: cm.name,
@@ -439,12 +450,13 @@ export function buildFixedStageGang(
         isMonster: true,
         widthScale: cm.widthScale,
         scale: cm.scale,
-        speed: Number((1.54 * cm.speedMul + (stageNum - 1) * 0.05).toFixed(2)),
-        attack: Math.round(30 * cm.atkMul * diffScale * sizeBoost),
-        defense: Math.round((cm.defBonus + stageNum * 3) * sizeBoost),
-        hp: Math.round(195 * cm.hpMul * diffScale),
-        evasion: cm.role === 'agile' ? 8 : 0,
-        critChance: cm.role === 'giant' || cm.role === 'brawler' ? 12 : 6,
+        speed: Number((1.85 * cm.speedMul * speedStageScale).toFixed(2)),
+        attackSpeed: Number((baseAtkSpd * speedStageScale).toFixed(2)),
+        attack: Math.round(28 * cm.atkMul * stageScale * sizeBoost),
+        defense: Math.round((10 + cm.defBonus) * stageScale * sizeBoost),
+        hp: Math.round(190 * cm.hpMul * stageScale),
+        evasion: Math.min(45, Math.round((cm.role === 'agile' ? 8 : 3) * stageScale)),
+        critChance: Math.min(45, Math.round((cm.role === 'giant' || cm.role === 'brawler' ? 10 : 5) * stageScale)),
         hasSpecial: cm.tier !== 'basic',
         avatarConfig: {
           gender: 'male',

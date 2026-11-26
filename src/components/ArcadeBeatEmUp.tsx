@@ -83,6 +83,8 @@ interface BossTemplate {
   modelForward?: string;
   drops?: any[];
   scale: number;
+  speed: number;
+  attackSpeed: number;
   attack: number;
   defense: number;
   hp: number;
@@ -625,10 +627,10 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             });
           }
 
-          // Materiais de Refinamento / Forja (pergaminhos do ferreiro, catalisadores, minérios e materiais de forja)
+          // Materiais reais de Refinamento / Forja cadastrados na loja com imagem (nunca itens genéricos sem imagem!)
           const isForgeEffect = sd.gameEffect === 'break_item' || sd.gameEffect === 'fuse_item' || sd.gameEffect === 'blacksmith_scroll';
-          const isCraftingMaterial = sd.type === 'other' && !isPetOrRanch && sd.gameEffect !== 'unlock_skin' && sd.gameEffect !== 'bazar_sale_permit';
-          if (!isPetOrRanch && (forgeReferencedIds.has(String(s.id)) || isForgeEffect || isCraftingMaterial)) {
+          const resolvedRefImg = sd.imageUrl || sd.itemImageUrl || '';
+          if (!isPetOrRanch && resolvedRefImg && (forgeReferencedIds.has(String(s.id)) || isForgeEffect)) {
             const minRankIdx = getMinRankIndex(sd.minRankRequired);
             const rankName = resolveMinRankName(sd.minRankRequired) || 'Sem Patente';
             let stageTierRequired = 1;
@@ -640,7 +642,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             refinements.push({
               id: String(s.id),
               title: sd.title,
-              imageUrl: sd.imageUrl || sd.itemImageUrl,
+              imageUrl: resolvedRefImg,
               price: rawPrice,
               stageTierRequired,
               rankLabel: rankName,
@@ -755,11 +757,13 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 modelForward: cfg.modelForward || 'z',
                 drops: cfgDrops,
                 scale: Math.max(1.35, Math.min(1.85, rawZoom * 1.35)),
-                attack: Math.max(45, Number(st.attack) || 55),
-                defense: Math.max(12, Number(st.defense) || 18),
-                hp: Math.max(140, Number(st.hp) || 180),
+                speed: Math.max(0.6, Number(st.speed) || 1.0),
+                attackSpeed: Math.max(0.35, Number(st.attackSpeed) || 0.56),
+                attack: Math.max(25, Number(st.attack) || 35),
+                defense: Math.max(10, Number(st.defense) || 18),
+                hp: Math.max(150, Number(st.hp) || 350),
                 evasion: Math.max(0, Number(st.evasion) || 5),
-                critChance: Math.max(8, Number(st.critChance) || 12),
+                critChance: Math.max(5, Number(st.critChance) || 12),
                 damageEffect: cfg.damageEffect || cfg.stats?.damageEffect || 'none',
                 attacksConfig: normalizeMonsterAttacks(cfg.attacks),
               });
@@ -772,11 +776,13 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                 drops: cfgDrops,
                 avatarConfig: cfg,
                 scale: Math.max(0.85, Math.min(1.3, rawZoom)),
-                attack: Math.max(22, Number(st.attack) || 28),
-                defense: Math.max(5, Number(st.defense) || 8),
-                hp: Math.max(95, Number(st.hp) || 120),
-                evasion: Math.max(0, Number(st.evasion) || 2),
-                critChance: Math.max(5, Number(st.critChance) || 8),
+                speed: Math.max(0.6, Number(st.speed) || 1.0),
+                attackSpeed: Math.max(0.35, Number(st.attackSpeed) || 0.75),
+                attack: Math.max(20, Number(st.attack) || 28),
+                defense: Math.max(6, Number(st.defense) || 12),
+                hp: Math.max(100, Number(st.hp) || 160),
+                evasion: Math.max(0, Number(st.evasion) || 4),
+                critChance: Math.max(4, Number(st.critChance) || 8),
                 damageEffect: cfg.damageEffect || cfg.stats?.damageEffect || 'none',
               });
             }
@@ -1524,13 +1530,18 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
           spr.scale.set(0.78, 0.78, 1);
           obj = spr;
+          label = `${item?.title || item?.name || 'Item Raro'}${value > 1 ? ` x${value}` : ''}`;
         } else {
+          // Fallback seguro: nunca exibe prisma azul desconhecido; converte em moeda dourada
           obj = new THREE.Mesh(
-            new THREE.OctahedronGeometry(0.3, 0),
-            new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0369a1 })
+            new THREE.CylinderGeometry(0.26, 0.26, 0.08, 14),
+            new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xca8a04, metalness: 0.55 })
           );
+          obj.rotation.x = Math.PI / 2;
+          kind = 'coin';
+          value = Math.max(15, value);
+          label = `+${value} Ouro`;
         }
-        label = `${item?.title || item?.name || 'Item Raro'}${value > 1 ? ` x${value}` : ''}`;
       }
 
       obj.position.set(x, groundY + 0.65, z);
@@ -1607,6 +1618,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       attackAnimStart: number;
       attackAnimUntil: number;
       attackCdUntil: number;
+      attackSpeed: number;
+      armorUntil: number;
       hurtUntil: number;
       knockdownUntil: number;
       koUntil: number;
@@ -1730,17 +1743,14 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             : activePool[sp.gangIdx % activePool.length];
       const isSubBoss = !isBoss && (!!sp.isSubBoss || !!gangTmpl.isSubBoss);
 
-      const bossMul = stageMeta.bossHpMultiplier;
-      const minBossHp = 950 + stageIdxNum * 650;
-      const rawBossHp = Math.round((bossTmpl?.hp || 180) * bossMul);
-      const adaptiveFloor = playerAttackPower * (isBoss ? (28 + stageIdxNum * 6) : 5);
+      const bossBaseHp = bossTmpl?.hp || 250;
+      const rawBossHp = Math.round(bossBaseHp * 10 * Math.pow(1.12, stageIdxNum));
+      const minBossHp = Math.round((1400 + stageIdxNum * 750) * Math.max(1, stageMeta.bossHpMultiplier / 5));
       const maxHp = isBoss
-        ? Math.max(minBossHp, rawBossHp, adaptiveFloor)
+        ? Math.max(minBossHp, rawBossHp)
         : Math.max(
             gangTmpl.hp,
-            isSubBoss
-              ? Math.round(adaptiveFloor * 1.65)
-              : (gangTmpl.scale >= 1.25 ? Math.round(adaptiveFloor * 1.45) : Math.round(adaptiveFloor * 0.72))
+            isSubBoss ? Math.round(gangTmpl.hp * 1.45) : gangTmpl.hp
           );
       const barSize = isBoss
         ? Math.max(180, Math.round(maxHp / Math.min(8, Math.max(3, Math.ceil(bossMul / 2) + 2))))
@@ -1780,8 +1790,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       sh.position.set(spawnX, envRefs.floorHeightAt(spawnX) + 0.02, spawnZ);
       scene.add(sh);
 
-      // Respeita o ataque configurado do chefe com progressão equilibrada por estágio
-      const bossAtkBase = Math.max(45, Math.round((bossTmpl?.attack || 55) * (1.05 + stageIdxNum * 0.16)));
+      // Chefe usa 10x HP e 2x nos demais atributos (balanceado para não zerar o dano do jogador)
+      const bossAtkBase = Math.max(42, Math.round((bossTmpl?.attack || 35) * 2 * Math.pow(1.1, stageIdxNum)));
       const entity: EnemyEntity = {
         id: enemySeq++,
         name,
@@ -1796,7 +1806,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         acroPhase: 0,
         baseScale,
         // Velocidade do chefe cadenciada estilo Final Fight
-        speed: isBoss ? 1.88 + stageIdxNum * 0.08 : gangTmpl.speed,
+        speed: isBoss ? Number((1.78 * (bossTmpl?.speed || 1) * Math.pow(1.04, stageIdxNum)).toFixed(2)) : gangTmpl.speed,
         x: spawnX,
         y: spawnY,
         vy: (sp.side === 'door' && isBoss) ? 6.0 : (sp.side === 'seat' ? 4.2 : 0),
@@ -1806,9 +1816,9 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         maxHp,
         barSize,
         attack: isBoss ? bossAtkBase : gangTmpl.attack,
-        defense: isBoss ? Math.round((bossTmpl?.defense || 18) + stageIdxNum * 6) : gangTmpl.defense,
-        evasion: isBoss ? (bossTmpl?.evasion || 6) : gangTmpl.evasion,
-        critChance: isBoss ? (bossTmpl?.critChance || 12) : gangTmpl.critChance,
+        defense: isBoss ? Math.min(75, Math.round((bossTmpl?.defense || 16) * 2)) : gangTmpl.defense,
+        evasion: isBoss ? Math.min(45, (bossTmpl?.evasion || 5) * 2) : gangTmpl.evasion,
+        critChance: isBoss ? Math.min(50, (bossTmpl?.critChance || 12) * 2) : gangTmpl.critChance,
         damageEffect: isBoss ? bossTmpl?.damageEffect : gangTmpl.damageEffect,
         hasSpecial: isBoss ? true : gangTmpl.hasSpecial,
         attacksConfig: isBoss ? bossTmpl?.attacksConfig : gangTmpl.attacksConfig,
@@ -1830,6 +1840,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         attackAnimStart: 0,
         attackAnimUntil: 0,
         attackCdUntil: performance.now() + 950 + sIdx * 420,
+        attackSpeed: isBoss ? Number(((bossTmpl?.attackSpeed || 0.56) * 2).toFixed(2)) : gangTmpl.attackSpeed,
+        armorUntil: 0,
         hurtUntil: 0,
         knockdownUntil: 0,
         koUntil: 0,
@@ -2207,8 +2219,15 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
       }
 
       const wMeta = activeTempWeapon ? WEAPON_META[activeTempWeapon] : null;
-      const reachX = (isSpecial ? 3.65 : (pose === 'flying_kick' ? 3.05 : isKick ? 2.85 : 2.5)) + (wMeta?.reachBonus || 0);
-      const reachZ = isSpecial ? 2.55 : 1.55;
+      const hasAnyWeapon = Boolean(activeTempWeapon || playerAttackPower > bareHandsAttackPower);
+      const reachX = (
+        isSpecial ? 3.65
+          : pose === 'flying_kick' ? 2.25
+          : isKick ? 1.65
+          : hasAnyWeapon ? 2.65
+          : 1.85
+      ) + (wMeta?.reachBonus || 0);
+      const reachZ = isSpecial ? 2.55 : (isKick && pose !== 'flying_kick' ? 1.15 : hasAnyWeapon ? 1.55 : 1.35);
       let hitAnyWithWeapon = false;
       let specialHitEnemies = 0;
 
@@ -2229,8 +2248,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             // Voadora (Pulo + Chute / Ataque Aéreo): mais forte que o chute normal e que um item comum!
             attackPowerUsed = Math.max(Math.round(bareHandsAttackPower * 1.75), Math.round(equippedBase * 1.32));
           } else if (isKick) {
-            // Chute no chão: mais forte que mãos vazias (e que madeira +0), porém superado por armas forjadas/superiores
-            attackPowerUsed = Math.round(bareHandsAttackPower * 1.28 + 4);
+            // Chute no chão: alcance curto e dano moderado (superado por armas forjadas/superiores)
+            attackPowerUsed = Math.round(bareHandsAttackPower * 1.08 + 2);
           } else {
             const comboMult = playerState.comboStep === 3 ? 1.32 : playerState.comboStep === 2 ? 1.12 : 1.0;
             attackPowerUsed = Math.round(equippedBase * comboMult);
@@ -2248,7 +2267,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           if (now - en.lastHitAt > 1800) en.hitStunCount = 0;
           en.lastHitAt = now;
           en.hitStunCount++;
-          const counterThreshold = (en.isBoss || en.moveProfile === 'giant' || en.isSubBoss || en.moveProfile === 'slash') ? 3 : 4;
+          const counterThreshold = (en.isBoss || en.moveProfile === 'giant')
+            ? 1
+            : (en.isSubBoss || ['slash', 'rusher', 'agile', 'ninja_knife'].includes(en.moveProfile))
+              ? 2
+              : 3;
 
           const pushSign = dx >= 0 ? 1 : -1;
           if (isSpecial) {
@@ -2264,10 +2287,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             en.hurtUntil = now + 380;
             en.windupUntil = 0;
             en.vx = pushSign * 6.4;
-          } else if (en.hp > 0 && now >= en.freezeUntil && en.hitStunCount >= counterThreshold) {
+          } else if (en.hp > 0 && now >= en.freezeUntil && (now < en.armorUntil || en.hitStunCount >= counterThreshold)) {
             en.hitStunCount = 0;
             en.hurtUntil = 0;
-            en.attackCdUntil = now + 180;
+            en.armorUntil = now + 950;
+            en.attackCdUntil = Math.min(en.attackCdUntil, now + 90);
           } else {
             en.hurtUntil = now + (activeTempWeapon === 'pipe' || isKick ? 340 : 240);
             en.windupUntil = 0;
@@ -3543,7 +3567,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               spawnFloat(`-${hit.damage}`, '#ef4444', new THREE.Vector3(playerState.x, playerState.y + 2.1, playerState.z), camera);
               handlePlayerZeroHp(now);
             }
-          } else if (!isEnemyFrozen && !isEnemyKnockedDown && now >= en.hurtUntil && en.y <= enGroundY + 0.05) {
+          } else if (!isEnemyFrozen && !isEnemyKnockedDown && (now >= en.hurtUntil || now < en.armorUntil) && en.y <= enGroundY + 0.05) {
             const dx = playerState.x - en.x;
             const dz = playerState.z - en.z;
 
@@ -3783,7 +3807,8 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               en.attackAnimStart = now;
               const animDur = (en.plannedMove === 'acro_kick' || en.plannedMove === 'acro_dive' || en.plannedMove === 'belly_charge') ? 480 : 290;
               en.attackAnimUntil = now + animDur;
-              en.attackCdUntil = now + (en.isBoss ? 1200 : (en.moveProfile === 'agile' || en.moveProfile === 'ninja_knife' || en.transformedAnimal === 'coelho' ? 1050 : 1450));
+              const baseCdMs = Math.round(1000 / Math.max(0.4, en.attackSpeed || 0.72));
+              en.attackCdUntil = now + (en.isBoss ? Math.max(680, Math.min(1350, baseCdMs)) : Math.max(720, Math.min(1650, baseCdMs)));
 
               if (en.isRangedShot) {
                 const poisonWeakMul = en.activeStatus === 'poison' ? 0.65 : 1.0;
@@ -4288,7 +4313,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     : { layerIdx: 0, totalLayers: 1, fillPct: 0, fgColor: ENEMY_LAYER_COLORS[0], bgColor: '#dc2626' };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#070912', color: '#fff', overflow: 'hidden', userSelect: 'none' }}>
+    <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', display: 'flex', flexDirection: 'column', background: '#070912', color: '#fff', overflow: 'hidden', userSelect: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 1rem', background: 'rgba(15, 23, 42, 0.92)', borderBottom: '1px solid rgba(255,255,255,0.12)', zIndex: 20, gap: '0.5rem', flexWrap: 'wrap' }}>
         <button onClick={onExit} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}>
           <ChevronLeft size={18} /> Sair
@@ -4500,7 +4525,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
         {isMobileArcade ? (
           /* MODO MOBILE: Analógico virtual esquerdo estilo Cenários + botões táteis virtuais sem atalhos de teclado */
-          <div style={{ position: 'absolute', bottom: '0.95rem', left: '1rem', right: '1rem', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', bottom: 'max(0.9rem, env(safe-area-inset-bottom))', left: '0.85rem', right: '0.85rem', zIndex: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', pointerEvents: 'none' }}>
             <div
               ref={joyBaseRef}
               onPointerDown={(e) => {
