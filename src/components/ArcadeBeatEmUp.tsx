@@ -7,7 +7,7 @@ import { GLTFLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/G
 import { DRACOLoader } from 'skinview3d/node_modules/three/examples/jsm/loaders/DRACOLoader.js';
 // @ts-ignore
 import { WalkingAnimation, PlayerObject } from 'skinview3d';
-import { ChevronLeft, Heart, Shield, Swords, Coins, Sparkles, RotateCcw, Trophy, Zap } from 'lucide-react';
+import { ChevronLeft, Heart, Shield, Swords, Coins, Sparkles, RotateCcw, Trophy, Zap, Users, Copy, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getSafeUrl } from '../lib/utils';
 import { fetchModelsByCategory, fetchActiveCoin, isImageUrl } from '../lib/model3d';
@@ -475,6 +475,30 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
   const [extraLives, setExtraLives] = useState(INITIAL_EXTRA_LIVES);
   const extraLivesRef = useRef(INITIAL_EXTRA_LIVES);
   const [showRankingModal, setShowRankingModal] = useState(false);
+  const [coopRoomCode, setCoopRoomCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const sp = new URLSearchParams(window.location.search);
+    return (sp.get('sala') || sp.get('room') || '').trim().toUpperCase().slice(0, 8);
+  });
+  const [showCoopModal, setShowCoopModal] = useState(false);
+  const [coopJoinInput, setCoopJoinInput] = useState('');
+  const [coopError, setCoopError] = useState('');
+  const [coopCopied, setCoopCopied] = useState(false);
+  const [coopPeers, setCoopPeers] = useState<Array<{ uid: string; name: string; hp: number; maxHp: number; score: number; stageId: string; joinedAt: number }>>([]);
+  const coopPlayerCountRef = useRef(1);
+  const coopChannelRef = useRef<any>(null);
+  const localSkinUrlRef = useRef<string>('');
+  const localPlayerSyncRef = useRef({ x: 0, y: 0, z: 0, facing: 1, hp: 100, maxHp: 100, score: 0, moving: false, attackPose: 'idle', attackUntil: 0 });
+  const remotePlayersStateRef = useRef<Map<string, { uid: string; name: string; skinUrl?: string; stageId: string; x: number; y: number; z: number; facing: number; hp: number; maxHp: number; moving: boolean; attackPose: string; attackUntil: number; lastSeen: number }>>(new Map());
+  const remoteEnemyDamageQueueRef = useRef<Array<{ idx: number; hp: number; stageId: string }>>([]);
+  const [bonusSummary, setBonusSummary] = useState<{
+    basePts: number;
+    remSec: number;
+    timePts: number;
+    countedTotal: number;
+    targetTotal: number;
+    phase: 'counting' | 'exiting' | 'lamenting';
+  } | null>(null);
   const [coinsCollected, setCoinsCollected] = useState(0);
   const [killsCount, setKillsCount] = useState(0);
   const killsRef = useRef(0);
@@ -533,6 +557,113 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (!coopRoomCode || !userData?.uid) {
+      setCoopPeers([]);
+      coopPlayerCountRef.current = 1;
+      remotePlayersStateRef.current.clear();
+      coopChannelRef.current = null;
+      return;
+    }
+
+    const joinedAt = Date.now();
+    const channel = supabase.channel(`arcade_coop_${coopRoomCode}`, {
+      config: { presence: { key: userData.uid } },
+    });
+    coopChannelRef.current = channel;
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState() as Record<string, any[]>;
+        const allPeers: Array<{ uid: string; name: string; hp: number; maxHp: number; score: number; stageId: string; joinedAt: number }> = [];
+        Object.values(state).forEach((entries) => {
+          const p = entries?.[0];
+          if (p?.uid) allPeers.push(p);
+        });
+        allPeers.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+        const allowed = allPeers.slice(0, 4);
+        if (allPeers.length > 4 && !allowed.some(p => p.uid === userData.uid)) {
+          setCoopError('Esta sala já atingiu o limite de 4 jogadores. Crie uma nova sala!');
+          setCoopRoomCode('');
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('sala');
+            window.history.replaceState({}, '', url.toString());
+          }
+          return;
+        }
+        setCoopPeers(allowed);
+        coopPlayerCountRef.current = Math.max(1, Math.min(4, allowed.length));
+        const activeUids = new Set(allowed.map(p => p.uid));
+        remotePlayersStateRef.current.forEach((_, uid) => {
+          if (!activeUids.has(uid)) remotePlayersStateRef.current.delete(uid);
+        });
+      })
+      .on('broadcast', { event: 'player_state' }, ({ payload }: { payload: any }) => {
+        if (!payload?.uid || payload.uid === userData.uid) return;
+        remotePlayersStateRef.current.set(payload.uid, {
+          uid: payload.uid,
+          name: payload.name || 'Aliado',
+          skinUrl: payload.skinUrl,
+          stageId: payload.stageId || 'stage1_streets',
+          x: Number(payload.x || 0),
+          y: Number(payload.y || 0),
+          z: Number(payload.z || 0),
+          facing: Number(payload.facing || 1),
+          hp: Number(payload.hp || 100),
+          maxHp: Number(payload.maxHp || 100),
+          moving: Boolean(payload.moving),
+          attackPose: String(payload.attackPose || 'idle'),
+          attackUntil: Number(payload.attackUntil || 0),
+          lastSeen: performance.now(),
+        });
+      })
+      .on('broadcast', { event: 'enemy_sync' }, ({ payload }: { payload: any }) => {
+        if (payload && typeof payload.idx === 'number' && typeof payload.hp === 'number') {
+          remoteEnemyDamageQueueRef.current.push(payload);
+        }
+      })
+      .on('broadcast', { event: 'stage_sync' }, ({ payload }: { payload: any }) => {
+        if (payload?.stageId && payload.senderUid !== userData.uid) {
+          setStageId(payload.stageId);
+        }
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            uid: userData.uid,
+            name: hudPlayerName,
+            hp: localPlayerSyncRef.current.hp,
+            maxHp: localPlayerSyncRef.current.maxHp,
+            score: scoreRef.current,
+            stageId,
+            joinedAt,
+          });
+        }
+      });
+
+    const syncInterval = window.setInterval(() => {
+      const lp = localPlayerSyncRef.current;
+      channel.send({
+        type: 'broadcast',
+        event: 'player_state',
+        payload: {
+          uid: userData.uid,
+          name: hudPlayerName,
+          skinUrl: localSkinUrlRef.current,
+          stageId,
+          ...lp,
+        },
+      });
+    }, 90);
+
+    return () => {
+      window.clearInterval(syncInterval);
+      coopChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [coopRoomCode, userData?.uid, hudPlayerName, stageId]);
 
   const rawDistStats = userData?.distributedStats || (userData as any)?.distributed_stats;
   const totalStats = calculateTotalStats(equippedItems, rawDistStats);
@@ -884,8 +1015,19 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     };
 
     let autoWalkExitTo: { x: number; z: number } | null = null;
+    let bonusCarHidePlayer = false;
+    let bonusCarOwnerPo: any = null;
+    let bonusCarOwnerStart = 0;
+    const remoteMeshes = new Map<string, { group: THREE.Group; po: any; walkAnim: WalkingAnimation; shadow: THREE.Mesh }>();
 
     const advanceToNextStageWithMap = (completedId: ArcadeStageId, nextId: ArcadeStageId | null) => {
+      if (nextId && coopChannelRef.current) {
+        coopChannelRef.current.send({
+          type: 'broadcast',
+          event: 'stage_sync',
+          payload: { stageId: nextId, senderUid: userData?.uid },
+        });
+      }
       if (!nextId) {
         persistCurrentRunToRanking(true);
         if (ROUND_MAP_NUMBERS[completedId]) {
@@ -965,6 +1107,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
     setBossHud(null);
     setEnemyBars([]);
     setGoArrow(false);
+    setBonusSummary(null);
     setBonusTimerSec(stageMeta.isBonus ? 40 : null);
     setWaveBanner(stageMeta.label.toUpperCase());
     setTimeout(() => { if (!disposed) setWaveBanner(''); }, 2300);
@@ -1130,6 +1273,7 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         const cfg = userData?.avatarConfig || {};
         const rawSkin = (cfg as any)?.customSkinUrl || await generateMinecraftSkinUrl(cfg as any);
         const skinUrl = (rawSkin && !/^(https?:|data:|blob:)/i.test(rawSkin)) ? `https://${rawSkin}` : rawSkin;
+        localSkinUrlRef.current = skinUrl;
         const po: any = new PlayerObject();
         if (po.cape) { po.cape.visible = false; po.remove(po.cape); }
         if (po.elytra) { po.elytra.visible = false; po.remove(po.elytra); }
@@ -1743,9 +1887,11 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
             : activePool[sp.gangIdx % activePool.length];
       const isSubBoss = !isBoss && (!!sp.isSubBoss || !!gangTmpl.isSubBoss);
 
+      const coopPlayers = Math.max(1, Math.min(4, coopPlayerCountRef.current || 1));
+      const bossMul = stageMeta.bossHpMultiplier;
       const bossBaseHp = bossTmpl?.hp || 250;
-      const rawBossHp = Math.round(bossBaseHp * 10 * Math.pow(1.12, stageIdxNum));
-      const minBossHp = Math.round((1400 + stageIdxNum * 750) * Math.max(1, stageMeta.bossHpMultiplier / 5));
+      const rawBossHp = Math.round(bossBaseHp * (10 * coopPlayers) * Math.pow(1.12, stageIdxNum));
+      const minBossHp = Math.round((1400 + stageIdxNum * 750) * coopPlayers * Math.max(1, bossMul / 5));
       const maxHp = isBoss
         ? Math.max(minBossHp, rawBossHp)
         : Math.max(
@@ -1923,7 +2069,24 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         envRefs.bossDoor.triggerBreak();
         shakeUntil = performance.now() + 260;
       }
-      w.spawns.forEach((sp, sIdx) => spawnEnemyFromSpec(sp, w.lockMinX, w.lockMaxX, sIdx));
+      const pCount = Math.max(1, Math.min(4, coopPlayerCountRef.current || 1));
+      const spawnsToRun = [...w.spawns];
+      if (pCount > 1) {
+        const nonBossPool = w.spawns.filter(sp => !sp.isBoss);
+        const extraCount = pCount === 2
+          ? Math.max(1, Math.round(nonBossPool.length * 0.5))
+          : pCount === 3
+            ? Math.max(2, nonBossPool.length)
+            : Math.max(3, Math.round(nonBossPool.length * 1.5));
+        for (let ex = 0; ex < extraCount && nonBossPool.length > 0; ex++) {
+          const baseSp = nonBossPool[ex % nonBossPool.length];
+          spawnsToRun.push({
+            ...baseSp,
+            zOffset: Math.max(-2.6, Math.min(2.8, (baseSp.zOffset || 0) + ((ex % 3) - 1) * 0.85)),
+          });
+        }
+      }
+      spawnsToRun.forEach((sp, sIdx) => spawnEnemyFromSpec(sp, w.lockMinX, w.lockMaxX, sIdx));
     };
 
     const applyTransformAnimalToEnemy = (en: EnemyEntity, animal: TransformAnimal, now: number) => {
@@ -2317,6 +2480,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
 
           checkAndStartBossRetreat(en, now);
 
+          if (coopChannelRef.current) {
+            const eIdx = enemies.indexOf(en);
+            if (eIdx >= 0) {
+              coopChannelRef.current.send({
+                type: 'broadcast',
+                event: 'enemy_sync',
+                payload: { idx: eIdx, hp: en.hp, stageId },
+              });
+            }
+          }
+
           if (en.isBoss || enemies.every(o => o.dead || !o.isBoss)) {
             setBossHud(en.hp > 0 ? { name: en.name, hp: en.hp, maxHp: en.maxHp, barSize: en.barSize } : null);
           }
@@ -2396,33 +2570,82 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
           finished = true;
           setBossHud(null);
           const remBonusSec = Math.max(0, Math.ceil((bonusEndAt - performance.now()) / 1000));
-          const bonusPts = 20000 + remBonusSec * 300;
-          awardArcadePoints(bonusPts, new THREE.Vector3(cr.x, 2.2, cr.z), camera);
-          setWaveBanner(`PERFECT! +${bonusPts.toLocaleString('pt-BR')} PTS!`);
-          spawnFloat('😭 OH! MY GOD!!', '#fef08a', new THREE.Vector3(cr.x - 2.8, 1.9, cr.z + 0.5), camera);
-          setCoinsCollected(c => c + 300);
+          const basePts = 20000;
+          const timePts = remBonusSec * 500;
+          const bonusPts = basePts + timePts;
 
-          (async () => {
-            try {
-              const bredCfg = { gender: 'male', skinColor: '#f1c27d', hairStyle: 'short', hairColor: '#92400e', shirtColor: '#dc2626', pantsColor: '#1e3a8a', shoesColor: '#0f172a' };
-              const bSkin = await generateMinecraftSkinUrl(bredCfg as any);
-              const bTex = await loadSkinTexture(bSkin);
+          // Fase 1: Jogador aguarda parado enquanto a pontuação bônus (carro + tempo restante) é contabilizada
+          playerState.facing = 1;
+          playerState.vx = 0;
+          playerState.vy = 0;
+          autoWalkExitTo = { x: playerState.x, z: playerState.z };
+          setBonusSummary({ basePts, remSec: remBonusSec, timePts, countedTotal: 0, targetTotal: bonusPts, phase: 'counting' });
+
+          const countStart = performance.now();
+          const countDurMs = 1750;
+          const countTimer = window.setInterval(() => {
+            if (disposed) { window.clearInterval(countTimer); return; }
+            const t = Math.min(1, (performance.now() - countStart) / countDurMs);
+            const cur = Math.round(bonusPts * t);
+            setBonusSummary(prev => prev ? { ...prev, countedTotal: cur } : null);
+            if (t >= 1) window.clearInterval(countTimer);
+          }, 40);
+
+          setTimeout(() => {
+            if (disposed) return;
+            window.clearInterval(countTimer);
+            awardArcadePoints(bonusPts, new THREE.Vector3(cr.x, 2.2, cr.z), camera);
+            setCoinsCollected(c => c + 300);
+
+            // Fase 2: Jogador caminha para a frente e sai de cena
+            setBonusSummary({ basePts, remSec: remBonusSec, timePts, countedTotal: bonusPts, targetTotal: bonusPts, phase: 'exiting' });
+            autoWalkExitTo = { x: playerState.x + 12.0, z: playerState.z };
+
+            setTimeout(() => {
               if (disposed) return;
-              const ownerPo: any = new PlayerObject();
-              if (ownerPo.cape) { ownerPo.cape.visible = false; ownerPo.remove(ownerPo.cape); }
-              if (ownerPo.elytra) { ownerPo.elytra.visible = false; ownerPo.remove(ownerPo.elytra); }
-              if (ownerPo.ears) { ownerPo.ears.visible = false; ownerPo.skin?.head?.remove?.(ownerPo.ears); }
-              if (bTex) ownerPo.skin.map = bTex;
-              const sc = 1.8 / 32.25;
-              ownerPo.scale.setScalar(sc);
-              ownerPo.position.set(cr.x - 3.1, 13.0 * sc, cr.z + 0.45);
-              ownerPo.rotation.y = Math.PI / 2;
-              applyCombatPose(ownerPo, 'crouch', 1);
-              scene.add(ownerPo);
-            } catch { /* noop */ }
-          })();
+              // Fase 3: Jogador já saiu de cena — só agora aparece o dono do carro ajoelhado lamentando por 4 segundos!
+              bonusCarHidePlayer = true;
+              setBonusSummary({ basePts, remSec: remBonusSec, timePts, countedTotal: bonusPts, targetTotal: bonusPts, phase: 'lamenting' });
+              spawnFloat('😭 OH! MY CAR!!', '#fef08a', new THREE.Vector3(cr.x - 2.6, 2.0, cr.z + 0.45), camera);
 
-          advanceToNextStageWithMap(stageId, getNextCampaignStage(stageId));
+              (async () => {
+                try {
+                  const bredCfg = { gender: 'male', skinColor: '#f1c27d', hairStyle: 'short', hairColor: '#92400e', shirtColor: '#dc2626', pantsColor: '#1e3a8a', shoesColor: '#0f172a' };
+                  const bSkin = await generateMinecraftSkinUrl(bredCfg as any);
+                  const bTex = await loadSkinTexture(bSkin);
+                  if (disposed) return;
+                  const ownerPo: any = new PlayerObject();
+                  if (ownerPo.cape) { ownerPo.cape.visible = false; ownerPo.remove(ownerPo.cape); }
+                  if (ownerPo.elytra) { ownerPo.elytra.visible = false; ownerPo.remove(ownerPo.elytra); }
+                  if (ownerPo.ears) { ownerPo.ears.visible = false; ownerPo.skin?.head?.remove?.(ownerPo.ears); }
+                  if (bTex) ownerPo.skin.map = bTex;
+                  const sc = 1.8 / 32.25;
+                  ownerPo.scale.setScalar(sc);
+                  ownerPo.position.set(cr.x - 2.7, 13.0 * sc, cr.z + 0.45);
+                  ownerPo.rotation.y = Math.PI / 2;
+                  applyCombatPose(ownerPo, 'crouch', 1);
+                  scene.add(ownerPo);
+                  bonusCarOwnerPo = ownerPo;
+                  bonusCarOwnerStart = performance.now();
+                } catch { /* noop */ }
+              })();
+
+              setTimeout(() => {
+                if (disposed) return;
+                setBonusSummary(null);
+                const nextSt = getNextCampaignStage(stageId);
+                if (coopChannelRef.current && nextSt) {
+                  coopChannelRef.current.send({
+                    type: 'broadcast',
+                    event: 'stage_sync',
+                    payload: { stageId: nextSt, senderUid: userData?.uid },
+                  });
+                }
+                setFadeOpacity(1);
+                setTimeout(() => { if (!disposed && nextSt) setStageId(nextSt); }, 480);
+              }, 4000);
+            }, 1550);
+          }, 2150);
         } else if (cr.kind === 'glass_thin' || cr.kind === 'glass_thick') {
           scene.remove(cr.mesh);
           awardArcadePoints(800, new THREE.Vector3(cr.x, 1.5, cr.z), camera);
@@ -2708,6 +2931,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               spawnFlamePuff(en.x, en.y + 0.6, en.z);
               spawnFloat(`🔥 -${firstEnDmg}`, '#fb923c', new THREE.Vector3(en.x, en.y + 2.0, en.z), camera);
               checkAndStartBossRetreat(en, now);
+
+          if (coopChannelRef.current) {
+            const eIdx = enemies.indexOf(en);
+            if (eIdx >= 0) {
+              coopChannelRef.current.send({
+                type: 'broadcast',
+                event: 'enemy_sync',
+                payload: { idx: eIdx, hp: en.hp, stageId },
+              });
+            }
+          }
               if (en.isBoss) setBossHud(en.hp > 0 ? { name: en.name, hp: en.hp, maxHp: en.maxHp, barSize: en.barSize } : null);
               if (en.hp <= 0) triggerEnemyKo(en, now, en.vx);
             } else if (now >= nextEnTick) {
@@ -2719,6 +2953,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               spawnFlamePuff(en.x, en.y + 0.6, en.z);
               spawnFloat(`🔥 -${recEnDmg}`, '#fb923c', new THREE.Vector3(en.x, en.y + 2.0, en.z), camera);
               checkAndStartBossRetreat(en, now);
+
+          if (coopChannelRef.current) {
+            const eIdx = enemies.indexOf(en);
+            if (eIdx >= 0) {
+              coopChannelRef.current.send({
+                type: 'broadcast',
+                event: 'enemy_sync',
+                payload: { idx: eIdx, hp: en.hp, stageId },
+              });
+            }
+          }
               if (en.isBoss) setBossHud(en.hp > 0 ? { name: en.name, hp: en.hp, maxHp: en.maxHp, barSize: en.barSize } : null);
               if (en.hp <= 0) triggerEnemyKo(en, now, -en.facing * 4.5);
             }
@@ -3447,6 +3692,17 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
               const dotCol = en.activeStatus === 'burn' ? '#fb923c' : en.activeStatus === 'poison' ? '#4ade80' : '#f87171';
               spawnFloat(`-${dot}`, dotCol, new THREE.Vector3(en.x, en.y + 2.0, en.z), camera);
               checkAndStartBossRetreat(en, now);
+
+          if (coopChannelRef.current) {
+            const eIdx = enemies.indexOf(en);
+            if (eIdx >= 0) {
+              coopChannelRef.current.send({
+                type: 'broadcast',
+                event: 'enemy_sync',
+                payload: { idx: eIdx, hp: en.hp, stageId },
+              });
+            }
+          }
               if (en.isBoss) setBossHud(prev => en.hp > 0 && prev ? { ...prev, hp: en.hp } : null);
               if (en.hp <= 0) triggerEnemyKo(en, now, -en.facing * 4.5);
             }
@@ -4255,9 +4511,14 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         const exGroundY = envRefs.floorHeightAt(playerState.x);
         playerState.y = exGroundY;
         playerState.group.position.set(playerState.x, playerState.y, playerState.z);
-        playerState.group.visible = (now < playerState.invulnUntil && now >= playerState.hurtUntil && now >= playerState.knockdownUntil)
-          ? Math.floor(now / 75) % 2 === 0
-          : true;
+        if (bonusCarHidePlayer) {
+          playerState.group.visible = false;
+          playerShadow.visible = false;
+        } else {
+          playerState.group.visible = (now < playerState.invulnUntil && now >= playerState.hurtUntil && now >= playerState.knockdownUntil)
+            ? Math.floor(now / 75) % 2 === 0
+            : true;
+        }
         playerState.group.rotation.z = 0;
         playerShadow.position.set(playerState.x, exGroundY + 0.02, playerState.z);
         if (playerState.playerObj) {
@@ -4269,6 +4530,98 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         camera.position.set(camX, camYEx, 9.6);
         camera.lookAt(camX, camYEx - 2.5, -0.5);
       }
+
+      if (bonusCarOwnerPo && bonusCarOwnerPo.skin?.head) {
+        const el = (now - bonusCarOwnerStart) * 0.0085;
+        bonusCarOwnerPo.skin.head.rotation.y = Math.sin(el) * 0.48;
+        bonusCarOwnerPo.skin.head.rotation.x = 0.28;
+      }
+
+      // Atualiza estado local para sincronização Co-op (1-4 jogadores)
+      localPlayerSyncRef.current = {
+        x: playerState.x,
+        y: playerState.y,
+        z: playerState.z,
+        facing: playerState.facing,
+        hp: playerState.hp,
+        maxHp: computedMaxHp,
+        score: scoreRef.current,
+        moving: Math.abs(playerState.knockbackVx) < 0.2 && (!!keysRef.current['ArrowLeft'] || !!keysRef.current['ArrowRight'] || !!keysRef.current['KeyA'] || !!keysRef.current['KeyD'] || Math.hypot(joyMoveRef.current.x, joyMoveRef.current.y) > 0.15),
+        attackPose: playerState.attackPose,
+        attackUntil: playerState.attackUntil,
+      };
+
+      // Aplica dano sincronizado recebido dos colegas da sala Co-op
+      if (remoteEnemyDamageQueueRef.current.length > 0) {
+        const q = remoteEnemyDamageQueueRef.current.splice(0, remoteEnemyDamageQueueRef.current.length);
+        q.forEach((ev) => {
+          if (ev.stageId !== stageId) return;
+          const targetEn = enemies[ev.idx];
+          if (targetEn && !targetEn.dead && targetEn.koUntil === 0 && ev.hp < targetEn.hp) {
+            targetEn.hp = Math.max(0, ev.hp);
+            if (targetEn.isBoss) {
+              setBossHud(targetEn.hp > 0 ? { name: targetEn.name, hp: targetEn.hp, maxHp: targetEn.maxHp, barSize: targetEn.barSize } : null);
+            }
+            if (targetEn.hp <= 0) {
+              triggerEnemyKo(targetEn, now, 3.2);
+            }
+          }
+        });
+      }
+
+      // Renderiza jogadores aliados online na mesma sala Co-op
+      const activeRemoteUids = new Set<string>();
+      remotePlayersStateRef.current.forEach((rp, uid) => {
+        if (rp.stageId !== stageId || now - rp.lastSeen > 5000) return;
+        activeRemoteUids.add(uid);
+        let rm = remoteMeshes.get(uid);
+        if (!rm) {
+          const rGroup = new THREE.Group();
+          const rShadow = new THREE.Mesh(
+            new THREE.CircleGeometry(0.45, 16),
+            new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 })
+          );
+          rShadow.rotation.x = -Math.PI / 2;
+          rShadow.position.set(rp.x, envRefs.floorHeightAt(rp.x) + 0.02, rp.z);
+          scene.add(rShadow);
+          const rPo: any = new PlayerObject();
+          if (rPo.cape) { rPo.cape.visible = false; rPo.remove(rPo.cape); }
+          if (rPo.elytra) { rPo.elytra.visible = false; rPo.remove(rPo.elytra); }
+          if (rPo.ears) { rPo.ears.visible = false; rPo.skin?.head?.remove?.(rPo.ears); }
+          const rScale = 1.8 / 32.25;
+          rPo.scale.setScalar(rScale);
+          rPo.position.y = 16 * rScale;
+          rGroup.add(rPo);
+          rGroup.position.set(rp.x, rp.y, rp.z);
+          scene.add(rGroup);
+          rm = { group: rGroup, po: rPo, walkAnim: new WalkingAnimation(), shadow: rShadow };
+          remoteMeshes.set(uid, rm);
+          if (rp.skinUrl) {
+            loadSkinTexture(rp.skinUrl).then((tex) => {
+              if (!disposed && tex) rm!.po.skin.map = tex;
+            }).catch(() => { /* noop */ });
+          }
+        }
+        rm.group.position.x += (rp.x - rm.group.position.x) * Math.min(1, 14 * dt);
+        rm.group.position.y += (rp.y - rm.group.position.y) * Math.min(1, 14 * dt);
+        rm.group.position.z += (rp.z - rm.group.position.z) * Math.min(1, 14 * dt);
+        rm.shadow.position.set(rm.group.position.x, envRefs.floorHeightAt(rm.group.position.x) + 0.02, rm.group.position.z);
+        rm.po.rotation.y = rp.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+        if (now < rp.attackUntil) {
+          applyCombatPose(rm.po, rp.attackPose as any, 0.5);
+        } else if (rp.moving) {
+          rm.walkAnim.update(rm.po, dt);
+        } else {
+          applyCombatPose(rm.po, 'idle', 0);
+        }
+      });
+      remoteMeshes.forEach((rm, uid) => {
+        if (!activeRemoteUids.has(uid)) {
+          scene.remove(rm.group);
+          scene.remove(rm.shadow);
+          remoteMeshes.delete(uid);
+        }
+      });
 
       renderer.render(scene, camera);
     };
@@ -4324,6 +4677,25 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { setCoopError(''); setShowCoopModal(true); }}
+            title="Criar ou entrar em sala Co-op (1 a 4 jogadores)"
+            style={{
+              background: coopRoomCode ? 'rgba(34, 197, 94, 0.22)' : 'rgba(59, 130, 246, 0.18)',
+              border: `1px solid ${coopRoomCode ? 'rgba(34, 197, 94, 0.6)' : 'rgba(59, 130, 246, 0.45)'}`,
+              borderRadius: '8px',
+              color: coopRoomCode ? '#86efac' : '#93c5fd',
+              padding: '0.25rem 0.6rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              fontSize: '0.76rem',
+              fontWeight: 'bold',
+            }}
+          >
+            <Users size={14} /> {coopRoomCode ? `Sala ${coopRoomCode} (${Math.max(1, coopPeers.length)}/4)` : 'Co-op 1-4P'}
+          </button>
           <button
             onClick={() => setShowRankingModal(true)}
             title="Ver Ranking de Pontuação do Arcade"
@@ -4823,6 +5195,161 @@ export default function ArcadeBeatEmUp({ userData, initialStage = 'stage1_street
                   Voltar
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {bonusSummary && bonusSummary.phase !== 'lamenting' && (
+          <div style={{
+            position: 'absolute',
+            top: '22%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 22,
+            background: 'rgba(10, 14, 28, 0.92)',
+            border: '2px solid #facc15',
+            borderRadius: '14px',
+            padding: '1rem 1.6rem',
+            minWidth: '280px',
+            textAlign: 'center',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.65)',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ color: '#facc15', fontWeight: '900', fontSize: '1.15rem', letterSpacing: '1px', marginBottom: '0.55rem' }}>
+              BONUS STAGE CLEAR!
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#e2e8f0', marginBottom: '0.25rem' }}>
+              <span>CARRO DESTRUÍDO:</span>
+              <strong style={{ color: '#fff' }}>+{bonusSummary.basePts.toLocaleString('pt-BR')}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: '#93c5fd', marginBottom: '0.5rem' }}>
+              <span>TEMPO ({bonusSummary.remSec}s × 500):</span>
+              <strong style={{ color: '#60a5fa' }}>+{bonusSummary.timePts.toLocaleString('pt-BR')}</strong>
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '0.45rem', display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: '900', color: '#4ade80' }}>
+              <span>TOTAL BÔNUS:</span>
+              <span>+{bonusSummary.countedTotal.toLocaleString('pt-BR')} PTS</span>
+            </div>
+          </div>
+        )}
+
+        {showCoopModal && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(2, 6, 23, 0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div style={{ background: '#0f172a', border: '1px solid rgba(59, 130, 246, 0.45)', borderRadius: '16px', padding: '1.25rem', width: '100%', maxWidth: '420px', color: '#f8fafc', boxShadow: '0 20px 45px rgba(0,0,0,0.6)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#93c5fd' }}>
+                  <Users size={18} /> Sessão Co-op (1 a 4 Jogadores)
+                </h3>
+                <button onClick={() => setShowCoopModal(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 'bold' }}>✕</button>
+              </div>
+
+              {coopError && (
+                <div style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', borderRadius: '8px', padding: '0.5rem 0.7rem', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+                  {coopError}
+                </div>
+              )}
+
+              {coopRoomCode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ background: 'rgba(30, 41, 59, 0.85)', borderRadius: '10px', padding: '0.75rem', border: '1px solid rgba(34,197,94,0.4)' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Código da Sala Ativa</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
+                      <span style={{ fontSize: '1.4rem', fontWeight: '900', letterSpacing: '3px', color: '#4ade80' }}>{coopRoomCode}</span>
+                      <button
+                        onClick={() => {
+                          if (typeof window !== 'undefined' && navigator.clipboard) {
+                            navigator.clipboard.writeText(window.location.href);
+                            setCoopCopied(true);
+                            setTimeout(() => setCoopCopied(false), 1800);
+                          }
+                        }}
+                        style={{ background: 'rgba(59,130,246,0.22)', border: '1px solid rgba(59,130,246,0.5)', color: '#93c5fd', borderRadius: '8px', padding: '0.35rem 0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', fontWeight: 'bold' }}
+                      >
+                        {coopCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Link</>}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#cbd5e1', marginTop: '0.45rem' }}>
+                      Dificuldade atual: <strong>Boss {10 * Math.max(1, coopPeers.length)}x HP</strong> · Inimigos escalados para <strong>{Math.max(1, coopPeers.length)} jogador(es)</strong>.
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                      Jogadores na Sala ({Math.max(1, coopPeers.length)}/4)
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {(coopPeers.length > 0 ? coopPeers : [{ uid: userData?.uid, name: hudPlayerName, hp: playerHp, maxHp: playerMaxHp, score, stageId }]).map((p, idx) => (
+                        <div key={p.uid || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.75)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}>
+                          <span>P{idx + 1}: <strong>{p.name}</strong></span>
+                          <span style={{ color: '#facc15', fontFamily: 'monospace' }}>{String(p.score || 0).padStart(6, '0')} PTS</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setCoopRoomCode('');
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete('sala');
+                        window.history.replaceState({}, '', url.toString());
+                      }
+                      setShowCoopModal(false);
+                    }}
+                    style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.84rem' }}
+                  >
+                    Sair da Sala (Voltar ao Modo Solo)
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.45 }}>
+                    Crie uma sala separada para jogar com até <strong>4 jogadores</strong>. O HP dos chefes (10x / 20x / 30x / 40x) e a quantidade de inimigos se ajustam automaticamente ao número de jogadores na sala.
+                  </p>
+                  <button
+                    onClick={() => {
+                      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+                      setCoopError('');
+                      setCoopRoomCode(code);
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('sala', code);
+                        window.history.replaceState({}, '', url.toString());
+                      }
+                    }}
+                    style={{ background: '#2563eb', border: 'none', color: '#fff', borderRadius: '10px', padding: '0.6rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.88rem' }}
+                  >
+                    + Criar Nova Sala Co-op
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <input
+                      type="text"
+                      value={coopJoinInput}
+                      onChange={(e) => setCoopJoinInput(e.target.value.toUpperCase().slice(0, 8))}
+                      placeholder="Código da sala (ex: AB12)"
+                      style={{ flex: 1, background: '#1e293b', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', padding: '0.48rem 0.7rem', color: '#fff', fontSize: '0.84rem', textTransform: 'uppercase' }}
+                    />
+                    <button
+                      onClick={() => {
+                        const clean = coopJoinInput.trim().toUpperCase();
+                        if (!clean) return;
+                        setCoopError('');
+                        setCoopRoomCode(clean);
+                        if (typeof window !== 'undefined') {
+                          const url = new URL(window.location.href);
+                          url.searchParams.set('sala', clean);
+                          window.history.replaceState({}, '', url.toString());
+                        }
+                      }}
+                      style={{ background: 'rgba(34,197,94,0.22)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac', borderRadius: '8px', padding: '0 0.9rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.84rem' }}
+                    >
+                      Entrar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
